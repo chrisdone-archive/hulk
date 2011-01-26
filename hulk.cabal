@@ -1,0 +1,16 @@
+Name:                hulk
+Version:             0.1
+Synopsis:            IRC daemon.
+License:             BSD3
+License-file:        LICENSE
+Author:              Chris Done
+Maintainer:          chrisdone@gmail.com
+Copyright:           2010 Chris Done 
+Category:            Network
+Build-type:          Simple
+Cabal-version:       >=1.2
+
+Executable hulk
+  Main-is:           Main.hs
+  Hs-Source-Dirs:    src
+  Build-depends:     base >= 4 && <5
