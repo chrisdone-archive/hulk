@@ -104,8 +104,14 @@ handleMsg Message{..} =
       ("QUIT",[msg])               -> handleQuit msg
       ("JOIN",[name])              -> handleJoin name
       ("PRIVMSG",[to,msg])         -> handlePrivmsg to msg
+      ("PING",[param])             -> handlePing param
       _ -> barf $ "Invalid or unknown message type, or not" ++ 
                   " enough parameters: " ++ msg_command
+
+handlePing :: String -> IRC ()
+handlePing p = do
+  hostname <- liftHulk $ config configHostname
+  serverReply "PONG" [hostname,p]
 
 handlePrivmsg :: String -> String -> IRC ()
 handlePrivmsg to msg = do
