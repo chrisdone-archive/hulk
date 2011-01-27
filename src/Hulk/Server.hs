@@ -2,6 +2,7 @@
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
 module Hulk.Server (start) where
 
+import Data.String
 import Data.List
 import Data.List.Split
 import Control.Applicative
@@ -213,15 +214,16 @@ quitUser = do
   nick <- maybe "" userNick <$> getUser
   ref <- getRef
   notice $ "Quitting " ++ show ref
-  liftHulk $ modifyNicks $ M.delete nick
+  liftHulk $ modifyNicks $ M.delete (downcase nick)
   let removeMe ch = ch { channelUsers = delete ref (channelUsers ch) }
   chans <- myChannels
   forM_ chans $ modifyChannels . M.adjust removeMe . fst
 
 handleNick :: String -> IRC ()
 handleNick nick = do
+  curNick <- maybe "" userNick <$> getUser
   nicks <- liftHulk (asks envNicks) >>= io . readMVar
-  if M.member nick nicks
+  if downcase curNick /= downcase nick && M.member (downcase nick) nicks
      then serverReply "433" ["*",nick,"Nickname is already in use."]
      else if validNick nick
              then registerNick nick
@@ -246,7 +248,8 @@ registerNick nick = do
                             , userRegistered = False }
      else modifyUser $ \u -> u { userNick = nick }
   ref <- getRef
-  liftHulk $ modifyNicks $ M.insert nick ref . M.delete oldNick
+  liftHulk $ modifyNicks $ M.insert (downcase nick) ref .
+                           M.delete (downcase oldNick)
   register
 
 chanNickChange nick (name,_) = do
@@ -318,7 +321,7 @@ getClientByRef ref = do
 getClientByNick :: String -> Hulk (Maybe Client)
 getClientByNick nick = do
   nicks <- getNicks
-  case M.lookup nick nicks of
+  case M.lookup (downcase nick) nicks of
     Just ref -> getClientByRef ref
     Nothing -> return Nothing
 
