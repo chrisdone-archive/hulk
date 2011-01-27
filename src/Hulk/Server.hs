@@ -14,6 +14,7 @@ import Network
 import Data.Map (Map)
 import qualified Data.Map as M
 import Network.IRC hiding (Channel)
+import Data.Char
 
 import Hulk.Concurrent
 import Hulk.Types
@@ -175,27 +176,36 @@ quitUser = do
   chans <- myChannels
   forM_ chans $ modifyChannels . M.adjust removeMe . fst
 
--- TODO: Nick restrictions.
 handleNick :: String -> IRC ()
 handleNick nick = do
   nicks <- liftHulk (asks envNicks) >>= io . readMVar
   if M.member nick nicks
      then serverReply "433" ["*",nick,"Nickname is already in use."]
-     else do u <- getUser
-             let oldNick = maybe "" userNick $ u
-             userReply "NICK" [nick]
-             chans <- myChannels
-             tell $ show chans
-             myChannels >>= mapM_ (chanNickChange nick)
-             if oldNick == "" && ((userUser <$> u) == Just "" || u==Nothing)
-                then insertUser $ User { userUser = ""
-                                       , userName = ""
-                                       , userNick = nick 
-                                       , userRegistered = False }
-                else modifyUser $ \u -> u { userNick = nick }
-             ref <- getRef
-             liftHulk $ modifyNicks $ M.insert nick ref . M.delete oldNick
-             register
+     else if validNick nick
+             then registerNick nick
+             else barf $ "Invalid nickname: " ++ nick
+     
+validNick :: String -> Bool
+validNick = all ok where
+  ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?"
+
+registerNick :: String -> IRC ()
+registerNick nick = do
+  u <- getUser
+  let oldNick = maybe "" userNick $ u
+  userReply "NICK" [nick]
+  chans <- myChannels
+  tell $ show chans
+  myChannels >>= mapM_ (chanNickChange nick)
+  if oldNick == "" && ((userUser <$> u) == Just "" || u==Nothing)
+     then insertUser $ User { userUser = ""
+                            , userName = ""
+                            , userNick = nick 
+                            , userRegistered = False }
+     else modifyUser $ \u -> u { userNick = nick }
+  ref <- getRef
+  liftHulk $ modifyNicks $ M.insert nick ref . M.delete oldNick
+  register
 
 chanNickChange nick (name,_) = do
   channelMsg "NICK" name [nick] True
