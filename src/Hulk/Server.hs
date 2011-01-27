@@ -238,10 +238,12 @@ myChannels = do
 
 handleJoin :: String -> IRC ()
 handleJoin name = do
-  channels <- liftHulk (asks envChannels) >>= io . readMVar
-  when (not $ M.member name channels) $ makeChannel name
-  joinChannel name
-  
+  let names = splitWhen (==',') name
+  forM_ names $ \name -> do
+    channels <- liftHulk (asks envChannels) >>= io . readMVar
+    when (not $ M.member name channels) $ makeChannel name
+    joinChannel name
+
 sendChanNicks :: String -> IRC ()
 sendChanNicks name = do
   nick <- maybe "" userNick <$> getUser
