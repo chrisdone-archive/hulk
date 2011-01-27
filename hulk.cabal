@@ -22,3 +22,4 @@ Executable hulk
                     ,containers == 0.3.*
                     ,irc == 0.4.4.*
                     ,split == 0.1.2.*
+                    ,utf8-string == 0.3.*

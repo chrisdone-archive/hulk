@@ -15,6 +15,7 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Network.IRC hiding (Channel)
 import Data.Char
+import qualified System.IO.UTF8 as UTF8
 
 import Hulk.Concurrent
 import Hulk.Types
@@ -83,7 +84,7 @@ handleClient = do
   handle <- io $ unRef <$> readMVar hvar
   inprogress "Waiting for your user and nickname"
   let loop = do
-        line <- io $ catch (Right <$> hGetLine handle) (return . Left)
+        line <- io $ catch (Right <$> UTF8.hGetLine handle) (return . Left)
         case line of
           Right line -> do incoming line; handleLine line; loop
           Left err -> handleQuit "Connection reset by peer."
@@ -332,7 +333,7 @@ reply line = do
 reply' :: Ref -> Message -> IRC ()
 reply' ref line = do
   outgoing $ encode line
-  io $ catch (hPutStrLn (unRef ref) $ encode line)
+  io $ catch (UTF8.hPutStrLn (unRef ref) $ encode line)
              (\e -> return ())
 
 serverReply :: String -> [String] -> IRC ()

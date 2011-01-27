@@ -11,6 +11,7 @@ import Control.Monad.Reader
 import Control.Concurrent
 import System.IO
 import Control.Monad.IO
+import qualified System.IO.UTF8 as UTF8
 
 import Hulk.Types
 import Hulk.Config
