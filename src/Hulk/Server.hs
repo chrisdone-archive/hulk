@@ -105,7 +105,7 @@ handleMsg Message{..} = do
       ("QUIT",[msg])               -> handleQuit msg
       ("TELL",[to,msg])            -> handleTell to msg
       ("JOIN",(name:_))    -> registered $ handleJoin name
-      ("PART",[chan,msg])  -> registered $ chanSendLeave "PART" chan msg
+      ("PART",[chan,msg])  -> registered $ handlePart chan msg
       ("PRIVMSG",[to,msg]) -> registered $ handlePrivmsg to msg
       ("NOTICE",[to,msg])  -> registered $ handleNotice to msg
       _ -> barf $ "Invalid or unknown message type, or not" ++ 
@@ -116,6 +116,12 @@ registered m = do
   if registered
      then m
      else barf "You must be registered to use this command."
+
+handlePart chan msg = do
+  ref <- getRef
+  let removeMe ch = ch { channelUsers = delete ref (channelUsers ch) }
+  modifyChannels $ M.adjust removeMe chan
+  chanSendLeave "PART" chan msg
 
 handleTell :: String -> String -> IRC ()
 handleTell to msg = do
