@@ -103,6 +103,7 @@ handleMsg Message{..} = do
       ("NICK",[nick])              -> handleNick nick
       ("PING",[param])             -> handlePing param
       ("QUIT",[msg])               -> handleQuit msg
+      ("TELL",[to,msg])            -> handleTell to msg
       ("JOIN",(name:_))    -> registered $ handleJoin name
       ("PART",[chan,msg])  -> registered $ chanSendLeave "PART" chan msg
       ("PRIVMSG",[to,msg]) -> registered $ handlePrivmsg to msg
@@ -115,6 +116,10 @@ registered m = do
      then m
      else barf "You must be registered to use this command."
 
+handleTell :: String -> String -> IRC ()
+handleTell to msg = do
+  channelMsg "NOTICE" to [to,msg] False
+
 handlePing :: String -> IRC ()
 handlePing p = do
   hostname <- liftHulk $ config configHostname
@@ -125,7 +130,7 @@ handlePrivmsg to msg = do
   case to of
     chan@('#':_) -> channelMsg "PRIVMSG" to [to,msg] True
     nick         -> nickMsg to msg
-    
+
 channelMsg typ to msg privmsg = do
   chans <- getChans
   case M.lookup to chans of
