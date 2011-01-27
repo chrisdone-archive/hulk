@@ -155,10 +155,21 @@ register = do
    Just User{..} | not userRegistered
      -> when (all (not.null) [userUser,userNick]) $ do
              serverReply "001" [userNick,"Welcome."]
+             sendMotd userNick
              modifyUser $ \u -> u { userRegistered = True }
    _ -> return ()
 
-   
+
+sendMotd nick = do
+  serverReply "375" [nick,"MOTD"]
+  motd <- liftHulk $ config configMotd
+  case motd of
+    Just file -> do ls <- io $ catch (lines <$> readFile file) 
+                                     (\e -> return ["None."])
+                    forM_ ls $ \line -> serverReply "372" [nick,line]
+    Nothing -> serverReply "372" [nick,"None."]
+  serverReply "376" [nick,"/MOTD."]
+
 chanSendLeave :: String -> String -> String -> IRC ()
 chanSendLeave typ chan msg = do
   chan <- chanByName chan
