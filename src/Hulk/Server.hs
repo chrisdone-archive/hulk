@@ -102,7 +102,7 @@ handleMsg Message{..} =
       ("NICK",[nick])              -> handleNick nick
       ("PART",[chan,msg])          -> chanSendLeave "PART" chan msg
       ("QUIT",[msg])               -> handleQuit msg
-      ("JOIN",[name])              -> handleJoin name
+      ("JOIN",(name:_))            -> handleJoin name
       ("PRIVMSG",[to,msg])         -> handlePrivmsg to msg
       ("PING",[param])             -> handlePing param
       _ -> barf $ "Invalid or unknown message type, or not" ++ 
