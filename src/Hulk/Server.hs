@@ -182,7 +182,7 @@ chanSendLeave typ chan msg = do
   case chan of
     Just Channel{..} -> channelMsg typ channelName [channelName,msg] False
     Nothing -> notice "No such channel."
-    
+
 handleQuit :: String -> IRC ()
 handleQuit msg = do
   chans <- myChannels
@@ -210,7 +210,7 @@ handleNick nick = do
 
 validNick :: String -> Bool
 validNick = all ok where
-  ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?"
+  ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
 
 registerNick :: String -> IRC ()
 registerNick nick = do
