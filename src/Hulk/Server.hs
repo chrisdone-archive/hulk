@@ -249,7 +249,8 @@ handleJoin name = do
   forM_ names $ \name -> do
     channels <- liftHulk (asks envChannels) >>= io . readMVar
     when (not $ M.member name channels) $ makeChannel name
-    joinChannel name
+    chans <- myChannels
+    when (not $ any ((==name).fst) chans) $ joinChannel name
 
 sendChanNicks :: String -> IRC ()
 sendChanNicks name = do
