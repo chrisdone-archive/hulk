@@ -96,17 +96,23 @@ handleLine line =
     Nothing  -> barf $ "Unable to parse " ++ show line
 
 handleMsg :: Message -> IRC ()
-handleMsg Message{..} = 
+handleMsg Message{..} = do
     case (msg_command,msg_params) of
       ("USER",[user,_,_,realname]) -> handleUser realname user
       ("NICK",[nick])              -> handleNick nick
-      ("PART",[chan,msg])          -> chanSendLeave "PART" chan msg
-      ("QUIT",[msg])               -> handleQuit msg
-      ("JOIN",(name:_))            -> handleJoin name
-      ("PRIVMSG",[to,msg])         -> handlePrivmsg to msg
       ("PING",[param])             -> handlePing param
+      ("QUIT",[msg])               -> handleQuit msg
+      ("JOIN",(name:_))    -> registered $ handleJoin name
+      ("PART",[chan,msg])  -> registered $ chanSendLeave "PART" chan msg
+      ("PRIVMSG",[to,msg]) -> registered $ handlePrivmsg to msg
       _ -> barf $ "Invalid or unknown message type, or not" ++ 
                   " enough parameters: " ++ msg_command
+
+registered m = do
+  registered <- maybe False userRegistered <$> getUser
+  if registered
+     then m
+     else barf "You must be registered to use this command."
 
 handlePing :: String -> IRC ()
 handlePing p = do
@@ -147,7 +153,7 @@ handleUser real user = do
                     }
   notice $ "Thanks, " ++ real ++ ". User details received."
   register
-  
+
 register = do
   u <- getUser
   tell$ show u
@@ -201,7 +207,7 @@ handleNick nick = do
      else if validNick nick
              then registerNick nick
              else barf $ "Invalid nickname: " ++ nick
-     
+
 validNick :: String -> Bool
 validNick = all ok where
   ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?"
