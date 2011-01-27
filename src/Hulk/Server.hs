@@ -107,6 +107,7 @@ handleMsg Message{..} = do
       ("JOIN",(name:_))    -> registered $ handleJoin name
       ("PART",[chan,msg])  -> registered $ chanSendLeave "PART" chan msg
       ("PRIVMSG",[to,msg]) -> registered $ handlePrivmsg to msg
+      ("NOTICE",[to,msg])  -> registered $ handleNotice to msg
       _ -> barf $ "Invalid or unknown message type, or not" ++ 
                   " enough parameters: " ++ msg_command
 
@@ -129,7 +130,13 @@ handlePrivmsg :: String -> String -> IRC ()
 handlePrivmsg to msg = do
   case to of
     chan@('#':_) -> channelMsg "PRIVMSG" to [to,msg] True
-    nick         -> nickMsg to msg
+    nick         -> nickMsg "PRIVMSG" to msg
+
+handleNotice :: String -> String -> IRC ()
+handleNotice to msg = do
+  case to of
+    chan@('#':_) -> channelMsg "NOTICE" to [to,msg] True
+    nick         -> nickMsg "NOTICE" to msg
 
 channelMsg typ to msg privmsg = do
   chans <- getChans
@@ -140,12 +147,12 @@ channelMsg typ to msg privmsg = do
                     when (ref /= myRef || not privmsg) $ do
                       userReply' ref typ msg
 
-nickMsg to msg = do
+nickMsg typ to msg = do
   client <- liftHulk $ getClientByNick to
   case client of
     Just Client{..} -> do
        ref <- io $ readMVar clientHandle
-       userReply' ref "PRIVMSG" [to,msg]
+       userReply' ref typ [to,msg]
 
 -- TODO: Only allow registration once.
 -- TODO: User restrictions.
