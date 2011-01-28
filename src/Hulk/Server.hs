@@ -26,6 +26,7 @@ import Hulk.Auth
 
 start :: Config -> IO ()
 start config = do
+  hSetBuffering stdout LineBuffering
   sto <- newMVar stdout
   clients <- newMVar M.empty
   nicks <- newMVar M.empty
