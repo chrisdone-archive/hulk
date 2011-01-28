@@ -19,9 +19,15 @@ getConfig conf = do
         hostname <- get c "LISTEN" "hostname"
         listen <- get c "LISTEN" "port"
         motd <- get c "STRINGS" "motd_file"
+        preface <- get c "STRINGS" "preface_file"
+        passwd <- get c "AUTH" "passwd_file"
+        key <- get c "AUTH" "passwd_key"
         return Config { configListen = fromIntegral (listen::Word16)
                       , configMotd = Just motd 
                       , configHostname = hostname
+                      , configPasswd = passwd
+                      , configPasswdKey = key
+                      , configPreface = Just preface
                       }
   case config of
     Left cperr -> error $ show cperr

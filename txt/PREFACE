@@ -1,0 +1,14 @@
+You must login with a username and password. If you have not already
+created one, you should do so by generating one and adding it to the
+Hulk passwd file in /opt/hulk/passwd. To generate a user/password
+key/pair, use:
+
+ $ /opt/hulk/genpass myusername mypassword
+
+Inspect it first to confirm it is correct. To write it to the passwd
+file use
+
+ $ /opt/hulk/genpass myusername mypassword >> /opt/hulk/passwd
+
+And configure your IRC client to use your username and to send a
+*server* password.

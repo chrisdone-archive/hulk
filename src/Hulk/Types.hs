@@ -28,6 +28,9 @@ data Config = Config {
       configListen :: PortNumber
     , configHostname :: String
     , configMotd :: Maybe FilePath
+    , configPreface :: Maybe FilePath
+    , configPasswd :: FilePath
+    , configPasswdKey :: FilePath
     } deriving (Show)
     
 data Channel = Channel {
@@ -40,6 +43,7 @@ data User = User {
       userUser :: String
     , userName :: String
     , userNick :: String
+    , userPass :: Maybe String
     , userRegistered :: Bool
     } deriving (Show,Eq,Ord)
 

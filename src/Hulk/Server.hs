@@ -22,6 +22,7 @@ import Hulk.Concurrent
 import Hulk.Types
 import Hulk.Log
 import Hulk.Config
+import Hulk.Auth
 
 start :: Config -> IO ()
 start config = do
@@ -83,7 +84,13 @@ handleClient :: IRC ()
 handleClient = do
   hvar <- asks clientHandle
   handle <- io $ unRef <$> readMVar hvar
-  inprogress "Waiting for your user and nickname"
+  inprogress "Waiting for your password"
+  preface <- liftHulk $ config configPreface
+  case preface of
+    Nothing   -> return ()
+    Just file -> do ls <- io $ catch (lines <$> readFile file)
+                                     (\e -> return ["None."])
+                    mapM_ notice ls
   let loop = do
         line <- io $ catch (Right <$> UTF8.hGetLine handle) (return . Left)
         case line of
@@ -101,10 +108,11 @@ handleMsg :: Message -> IRC ()
 handleMsg Message{..} = do
     case (msg_command,msg_params) of
       ("USER",[user,_,_,realname]) -> handleUser realname user
-      ("NICK",[nick])              -> handleNick nick
-      ("PING",[param])             -> handlePing param
-      ("QUIT",[msg])               -> handleQuit msg
-      ("TELL",[to,msg])            -> handleTell to msg
+      ("PASS",[pass])      -> handlePass pass
+      ("NICK",[nick])      -> handleNick nick
+      ("PING",[param])     -> handlePing param
+      ("QUIT",[msg])       -> handleQuit msg
+      ("TELL",[to,msg])    -> handleTell to msg
       ("JOIN",(name:_))    -> registered $ handleJoin name
       ("PART",[chan,msg])  -> registered $ handlePart chan msg
       ("PRIVMSG",[to,msg]) -> registered $ handlePrivmsg to msg
@@ -166,23 +174,42 @@ nickMsg typ to msg = do
 handleUser :: String -> String -> IRC ()
 handleUser real user = do
   nick <- maybe "" userNick <$> getUser
+  pass <- (>>=userPass) <$> getUser
   insertUser $ User { userUser = user
                     , userName = real
                     , userNick = nick
+                    , userPass = pass
                     , userRegistered = False
                     }
-  notice $ "Thanks, " ++ real ++ ". User details received."
+  inprogress $ "Thanks, " ++ real ++ ". User details received."
+  register
+  
+handlePass pass = do
+  u <- getUser
+  when (isNothing u) $ do
+    insertUser $ User { userUser = ""
+                      , userName = ""
+                      , userNick = ""
+                      , userPass = Nothing
+                      , userRegistered = False }
+  modifyUser $ \u -> u { userPass = Just pass }
+  inprogress "Received password"
   register
 
 register = do
   u <- getUser
-  tell$ show u
+  tell $ show u
   case u of
-   Just User{..} | not userRegistered
+   Just User{..} | not userRegistered && isJust userPass
      -> when (all (not.null) [userUser,userNick]) $ do
-             serverReply "001" [userNick,"Welcome."]
-             sendMotd userNick
-             modifyUser $ \u -> u { userRegistered = True }
+          authentic <-liftHulk $ authenticate userUser (fromMaybe "" userPass)
+          if authentic
+             then do serverReply "001" [userNick,"Welcome."]
+                     sendMotd userNick
+                     modifyUser $ \u -> u { userRegistered = True 
+                                          , userPass = Nothing -- Don't store.
+                                          }
+             else notice "Invalid user/pass."
    _ -> return ()
 
 
@@ -241,10 +268,12 @@ registerNick nick = do
   chans <- myChannels
   tell $ show chans
   myChannels >>= mapM_ (chanNickChange nick)
-  if oldNick == "" && ((userUser <$> u) == Just "" || u==Nothing)
+  if oldNick == "" && ((userUser <$> u) == Just "" || u==Nothing) &&
+    ((userPass <$> u) == Just Nothing || u==Nothing)
      then insertUser $ User { userUser = ""
                             , userName = ""
                             , userNick = nick 
+                            , userPass = Nothing
                             , userRegistered = False }
      else modifyUser $ \u -> u { userNick = nick }
   ref <- getRef
