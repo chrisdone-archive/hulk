@@ -174,8 +174,6 @@ nickMsg typ to msg = do
        ref <- io $ readMVar clientHandle
        userReply' ref typ [to,msg]
 
--- TODO: Only allow registration once.
--- TODO: User restrictions.
 handleUser :: String -> String -> IRC ()
 handleUser real user = do
   nick <- maybe "" userNick <$> getUser
