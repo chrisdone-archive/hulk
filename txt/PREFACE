@@ -3,12 +3,12 @@ created one, you should do so by generating one and adding it to the
 Hulk passwd file in /opt/hulk/passwd. To generate a user/password
 key/pair, use:
 
- $ /opt/hulk/genpass myusername mypassword
+ $ /opt/hulk/genpass myusername
 
-Inspect it first to confirm it is correct. To write it to the passwd
-file use
+It will prompt for a password. Inspect it first to confirm it is
+correct. To write it to the passwd file use
 
- $ /opt/hulk/genpass myusername mypassword >> /opt/hulk/passwd
+ $ /opt/hulk/genpass myusername >> /opt/hulk/passwd
 
 And configure your IRC client to use your username and to send a
 *server* password.

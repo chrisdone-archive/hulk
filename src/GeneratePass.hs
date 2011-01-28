@@ -19,13 +19,11 @@ import Hulk.Auth
 data Options = Options
   { conf      :: FilePath
   , user      :: String
-  , pass      :: String
   } deriving (Show,Data,Typeable)
 
 options = Options
   { conf = def &= opt "hulk.conf" &= help "The config file."
   , user = "demo"
-  , pass = "demo"
   }
   &= summary "Hulk IRC Daemon Password Generator (C) Chris Done 2011"
   &= help "Generates a password entry line for the Hulk passwd file."
@@ -37,6 +35,7 @@ main = do
   config <- getConfig $ optionsConf options
   let keyFile = configPasswdKey config
   key <- takeWhile digilet <$> readFile keyFile
+  pass <- filter (/='\n') <$> getLine
   putStrLn $ ((user options ++ " ") ++)
            $ concat $ map (\x -> showHex x "")
-           $ hmac_sha1 (encode key) (encode (pass options))
+           $ hmac_sha1 (encode key) (encode pass)
