@@ -169,6 +169,7 @@ channelMsg typ to msg privmsg = do
 nickMsg typ to msg = do
   client <- liftHulk $ getClientByNick to
   case client of
+    Nothing -> return ()
     Just Client{..} -> do
        ref <- io $ readMVar clientHandle
        userReply' ref typ [to,msg]
