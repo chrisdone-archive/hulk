@@ -248,6 +248,8 @@ quitUser = do
   let removeMe ch = ch { channelUsers = delete ref (channelUsers ch) }
   chans <- myChannels
   forM_ chans $ modifyChannels . M.adjust removeMe . fst
+  let Ref handle = ref
+  io $ hClose handle
 
 handleNick :: String -> IRC ()
 handleNick nick = do
