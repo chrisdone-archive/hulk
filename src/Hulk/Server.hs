@@ -95,31 +95,34 @@ handleClient = do
   let loop = do
         line <- io $ catch (Right <$> UTF8.hGetLine handle) (return . Left)
         case line of
-          Right line -> do incoming line; handleLine line; loop
+          Right line -> do handleLine line; loop
           Left err -> handleQuit "Connection reset by peer."
   loop
 
 handleLine :: String -> IRC ()
 handleLine line = 
   case decode line of
-    Just msg -> handleMsg msg
+    Just msg -> handleMsg line msg
     Nothing  -> barf $ "Unable to parse " ++ show line
 
-handleMsg :: Message -> IRC ()
-handleMsg Message{..} = do
+handleMsg :: String -> Message -> IRC ()
+handleMsg line Message{..} = do
     case (msg_command,msg_params) of
-      ("USER",[user,_,_,realname]) -> handleUser realname user
       ("PASS",[pass])      -> handlePass pass
-      ("NICK",[nick])      -> handleNick nick
-      ("PING",[param])     -> handlePing param
-      ("QUIT",[msg])       -> handleQuit msg
-      ("TELL",[to,msg])    -> handleTell to msg
-      ("JOIN",(name:_))    -> registered $ handleJoin name
-      ("PART",[chan,msg])  -> registered $ handlePart chan msg
-      ("PRIVMSG",[to,msg]) -> registered $ handlePrivmsg to msg
-      ("NOTICE",[to,msg])  -> registered $ handleNotice to msg
-      _ -> barf $ "Invalid or unknown message type, or not" ++ 
-                  " enough parameters: " ++ msg_command
+      safeToLog -> do 
+        incoming line
+        case safeToLog of
+          ("USER",[user,_,_,realname]) -> handleUser realname user
+          ("NICK",[nick])      -> handleNick nick
+          ("PING",[param])     -> handlePing param
+          ("QUIT",[msg])       -> handleQuit msg
+          ("TELL",[to,msg])    -> handleTell to msg
+          ("JOIN",(name:_))    -> registered $ handleJoin name
+          ("PART",[chan,msg])  -> registered $ handlePart chan msg
+          ("PRIVMSG",[to,msg]) -> registered $ handlePrivmsg to msg
+          ("NOTICE",[to,msg])  -> registered $ handleNotice to msg
+          _ -> barf $ "Invalid or unknown message type, or not" ++ 
+                      " enough parameters: " ++ msg_command
 
 registered m = do
   registered <- maybe False userRegistered <$> getUser
@@ -199,7 +202,6 @@ handlePass pass = do
 
 register = do
   u <- getUser
-  tell $ show u
   case u of
    Just User{..} | not userRegistered && isJust userPass
      -> when (all (not.null) [userUser,userNick]) $ do
