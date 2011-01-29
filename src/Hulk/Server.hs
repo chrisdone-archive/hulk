@@ -39,7 +39,7 @@ handleClient handle env conn = do
   fix $ \loop -> do
     line <- catch (Right <$> UTF8.hGetLine handle) (return . Left)
     case line of
-      Right line -> do runClientHandler env handle conn line; loop
+      Right line -> do runClientHandler env handle conn (line++"\n"); loop
       Left _err -> runClientHandler env handle conn $ 
                    makeLine DISCONNECT ["Connection lost."]
 
