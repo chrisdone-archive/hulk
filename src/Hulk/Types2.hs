@@ -49,6 +49,7 @@ data Client = Client {
 data Conn = Conn {
    connRef :: Ref
   ,connHostname :: String
+  ,connServerName :: String
 } deriving Show
 
 data Reply = ErrorReply Error | MessageReply Message | LogReply String
