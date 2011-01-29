@@ -65,6 +65,7 @@ handleNotice = undefined
 
 -- Client/user access functions
 
+-- | Modify the current user if unregistered.
 modifyUnregistered :: Monad m => (UnregUser -> UnregUser) -> IRC m ()
 modifyUnregistered f = do
   modifyUser $ \user -> 
@@ -72,6 +73,7 @@ modifyUnregistered f = do
         Unregistered user -> Unregistered (f user)
         u -> u
 
+-- | Modify the current user.
 modifyUser :: Monad m => (User -> User) -> IRC m ()
 modifyUser f = do
   let modMe = undefined
@@ -135,6 +137,7 @@ notice msg = do
   msg <- newServerMsg "NOTICE" [msg]
   tell . return . MessageReply $ msg
 
+-- | Make a new IRC message from the server.
 newServerMsg :: Monad m => String -> [String] -> IRC m Message
 newServerMsg cmd ps = do
   hostname <- asks connServerName
