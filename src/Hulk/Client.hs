@@ -413,11 +413,11 @@ reply ref msg = do
 
 -- | Log an incoming line.
 incoming :: Monad m => String -> IRC m ()
-incoming = log . (++"<- ")
+incoming = log . ("<- " ++)
 
 -- | Log an outgoing line.
 outgoing :: Monad m => String -> IRC m ()
-outgoing = log . (++"-> ")
+outgoing = log . ("-> " ++)
 
 -- | Log a line.
 log :: Monad m => String -> IRC m ()
