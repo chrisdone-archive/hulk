@@ -24,7 +24,7 @@ start config = withSocketsDo $ do
                        , envChannels = M.empty }
   forever $ do
     (handle,host,_port) <- accept listenSock
-    hSetBuffering handle LineBuffering
+    hSetBuffering handle NoBuffering
     let conn = Conn { connRef = newRef handle
                     , connHostname = host
                     , connServerName = configHostname config
@@ -68,9 +68,8 @@ handleReplies handle reply = do
 -- | Send a message to a client.
 sendMessage :: Ref -> Message -> IO ()
 sendMessage (Ref handle) msg = do
-  open <- hIsOpen handle
-  when open $ catch (UTF8.hPutStrLn handle $ encode msg)
-                    (\_ -> hClose handle)
+  catch (UTF8.hPutStrLn handle $ encode msg)
+        (\_ -> hClose handle)
 
 -- | Add a line to the log file.
 logLine :: String -> IO ()
