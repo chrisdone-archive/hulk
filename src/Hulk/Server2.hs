@@ -94,8 +94,12 @@ handleJoin chans = do
 
 -- | Handle the PART message.
 handlePart :: Monad m => String -> String -> IRC m ()
-handlePart chan msg = do
-  return ()
+handlePart name msg =
+  withValidChanName name $ \name -> do
+    ref <- asks connRef
+    let remMe c = c { channelUsers = filter (==ref) (channelUsers c) }
+    modifyChannels $ M.adjust remMe name
+    channelReply name "PART" [name]
 
 handlePrivmsg = undefined
 handleNotice = undefined
