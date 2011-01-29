@@ -111,7 +111,7 @@ handlePing p = do
 handleQuit :: Monad m => QuitType -> String -> IRC m ()
 handleQuit quitType msg = do
  (myChannels >>=) $ mapM_ $ \Channel{..} -> do
-   channelReply channelName "QUIT" [msg]
+   channelReply channelName "QUIT" [msg] ExcludeMe
  withRegistered $ \RegUser{regUserNick=nick} -> do
    modifyNicks $ M.delete nick
  ref <- asks connRef
@@ -140,7 +140,7 @@ handlePart name msg =
     ref <- asks connRef
     let remMe c = c { channelUsers = filter (==ref) (channelUsers c) }
     modifyChannels $ M.adjust remMe name
-    channelReply name "PART" [msg]
+    channelReply name "PART" [msg] IncludeMe
 
 -- | Handle the PRIVMSG message.
 handlePrivmsg :: Monad m => String -> String -> IRC m ()
@@ -156,7 +156,8 @@ handleNotice name msg = sendMsgTo "NOTICE" name msg
 sendMsgTo :: Monad m => String -> String -> String -> IRC m ()
 sendMsgTo typ name msg =
   if validChannel name
-     then withValidChanName name $ \name -> channelReply name typ [msg]
+     then withValidChanName name $ \name -> 
+            channelReply name typ [msg] ExcludeMe
      else userReply name typ [msg]
 
 -- Channel functions
@@ -173,7 +174,11 @@ joinChannel name = do
   ref <- asks connRef
   let addMe c = c { channelUsers = channelUsers c ++ [ref] }
   modifyChannels $ M.adjust addMe name
-  channelReply name "JOIN" [unChanName name]
+  channelReply name "JOIN" [unChanName name] IncludeMe
+  sendNamesList name
+
+sendNamesList :: Monad m => ChannelName -> IRC m ()
+sendNamesList name = do
   withRegistered $ \RegUser{regUserNick=me} ->
     withChannel name $ \Channel{..} -> do
       clients <- catMaybes <$> mapM getClientByRef channelUsers
@@ -389,12 +394,15 @@ newUnregisteredUser = Unregistered $ UnregUser {
 -- Channel replies
 
 -- | Send a client reply to everyone in a channel.
-channelReply :: Monad m => ChannelName -> String -> [String] -> IRC m ()
-channelReply name cmd params = do
+channelReply :: Monad m => ChannelName -> String -> [String] 
+             -> ChannelReplyType
+             -> IRC m ()
+channelReply name cmd params typ = do
   withChannel name $ \Channel{..} -> do
     ref <- asks connRef
     forM_ channelUsers $ \theirRef -> do
-      unless (ref == theirRef) $ clientReply theirRef cmd params
+      unless (typ == ExcludeMe && ref == theirRef) $ 
+        clientReply theirRef cmd params
 
 -- Client replies
 

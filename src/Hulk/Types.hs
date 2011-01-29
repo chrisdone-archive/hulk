@@ -104,3 +104,5 @@ data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
   deriving (Read,Show)
 
 data QuitType = RequestedQuit | SocketQuit deriving Eq
+
+data ChannelReplyType = IncludeMe | ExcludeMe deriving Eq
