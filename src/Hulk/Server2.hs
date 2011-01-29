@@ -144,6 +144,7 @@ withChannel name m = do
 
 -- Client/user access functions
 
+-- | Maybe get a registered user from a client.
 clientRegUser :: Client -> Maybe RegUser
 clientRegUser Client{..} = 
     case clientUser of
