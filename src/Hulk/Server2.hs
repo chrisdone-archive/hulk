@@ -2,15 +2,16 @@
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
 module Hulk.Server2 where
 
-import Control.Applicative
-import Control.Monad.Reader
-import Control.Monad.State
-import Control.Monad.Writer
-import Network.IRC
-import Prelude              hiding (log)
-import qualified Data.Map as M
+import           Control.Applicative
+import           Control.Monad.Reader
+import           Control.Monad.State
+import           Control.Monad.Writer
+import           Data.Char
+import qualified Data.Map             as M
+import           Network.IRC
+import           Prelude              hiding (log)
 
-import Hulk.Types2
+import           Hulk.Types2
 
 -- Entry point handler
 
@@ -168,3 +169,14 @@ outgoing = log . (++"-> ")
 -- | Log a line.
 log :: Monad m => String -> IRC m ()
 log = tell . return . LogReply
+
+-- Validation functions
+
+-- | Is a username valid?
+validUser :: String -> Bool
+validUser = validNick
+
+-- | Is a nickname valid? Digit/letter or one of these: -_/\\;()[]{}?`'
+validNick :: String -> Bool
+validNick = all ok where
+  ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
