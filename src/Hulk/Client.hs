@@ -54,6 +54,7 @@ handleMsgSafeToLog line safeToLog = do
     (PING,[param])  -> handlePing param
     (QUIT,[msg])    -> handleQuit msg
     (TELL,[to,msg]) -> handleTell to msg
+    (DISCONNECT,[msg]) -> handleQuit msg
     mustBeReg'd -> handleMsgReg'd line mustBeReg'd
 
 -- | Handle messages that can only be used when registered.
