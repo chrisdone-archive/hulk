@@ -122,6 +122,23 @@ newUnregisteredUser = Unregistered $ UnregUser {
   ,unregUserPass = Nothing
   }
 
+-- Server replies
+
+-- | Send a message reply.
+notice :: Monad m => String -> IRC m ()
+notice msg = do
+  msg <- newServerMsg "NOTICE" [msg]
+  tell . return . MessageReply $ msg
+
+newServerMsg :: Monad m => String -> [String] -> IRC m Message
+newServerMsg cmd ps = do
+  hostname <- asks connServerName
+  return $ Message {
+    msg_prefix = Just $ Server hostname
+   ,msg_command = cmd
+   ,msg_params = ps
+  }
+
 -- Output functions
 
 -- | Send an error reply.
