@@ -4,7 +4,6 @@ module Hulk.Config
     ,getConfig)
     where
 
-import Control.Monad.Reader
 import Data.Word
 import Data.ConfigFile
 

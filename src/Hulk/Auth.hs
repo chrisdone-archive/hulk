@@ -16,12 +16,10 @@ sha1 key str =
   concat $ map (\x -> showHex x "")
          $ hmac_sha1 (encode key) (encode str)
 
-authenticate :: String -> String -> Hulk Bool
+authenticate :: (Functor m,MonadProvider m) => String -> String -> m Bool
 authenticate user pass = do
-  keyFile <- config configPasswdKey
-  key <- io $ takeWhile digilet <$> readFile keyFile
-  passwdFile <- config configPasswd
-  passwds <- fmap getPasswds $ io $ readFile passwdFile
+  key <- provideKey
+  passwds <- fmap getPasswds $ providePasswords
   return $ any (== (user,sha1 key pass)) passwds
   where getPasswds = map readPair . lines
             where readPair = second (drop 1) . span (/=' ')

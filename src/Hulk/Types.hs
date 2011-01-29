@@ -5,6 +5,7 @@ module Hulk.Types where
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
+import Control.Monad.Identity
 import Data.Char
 import Data.Function
 import Data.Map             (Map)
@@ -106,3 +107,15 @@ data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
 data QuitType = RequestedQuit | SocketQuit deriving Eq
 
 data ChannelReplyType = IncludeMe | ExcludeMe deriving Eq
+
+class Monad m => MonadProvider m where
+  providePreface   :: m (Maybe String)
+  provideMotd      :: m (Maybe String)
+  provideKey       :: m String
+  providePasswords :: m String
+
+newtype HulkIO a = HulkIO { unHulkIO :: ReaderT Config IO a }
+ deriving (Monad,MonadReader Config,Functor,MonadIO)
+
+newtype HulkP a = HulkP { unHulkPure :: Identity a }
+ deriving (Monad)
