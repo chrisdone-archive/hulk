@@ -9,8 +9,8 @@ import Hulk.Types
 instance MonadProvider HulkIO where
   providePreface = maybeReadFile configPreface
   provideMotd = maybeReadFile configMotd
-  provideKey = mustReadFile configPasswd
-  providePasswords = mustReadFile configPasswdKey
+  provideKey = mustReadFile configPasswdKey
+  providePasswords = mustReadFile configPasswd
 
 maybeReadFile :: (Config -> Maybe FilePath) -> HulkIO (Maybe String)
 maybeReadFile get = do 

@@ -92,7 +92,7 @@ data Conn = Conn {
 data Reply = MessageReply Ref Message | LogReply String | Close
 
 newtype IRC m a = IRC { 
-      runIRC :: ReaderT Conn (WriterT [Reply] (StateT Env m)) a
+    runIRC :: ReaderT Conn (WriterT [Reply] (StateT Env m)) a
   }
   deriving (Monad
            ,Functor
@@ -114,8 +114,15 @@ class Monad m => MonadProvider m where
   provideKey       :: m String
   providePasswords :: m String
 
-newtype HulkIO a = HulkIO { unHulkIO :: ReaderT Config IO a }
+newtype HulkIO a = HulkIO { runHulkIO :: ReaderT Config IO a }
  deriving (Monad,MonadReader Config,Functor,MonadIO)
 
-newtype HulkP a = HulkP { unHulkPure :: Identity a }
+newtype HulkP a = HulkP { runHulkPure :: Identity a }
  deriving (Monad)
+
+instance MonadTrans IRC where
+  lift m = do
+    s <- get
+    IRC $ ReaderT $ \_ -> WriterT $ StateT $ \_ -> do
+      a <- m
+      return ((a,[]),s)

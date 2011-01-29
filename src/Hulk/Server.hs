@@ -5,14 +5,16 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.Fix
-import qualified Data.Map                 as M
+import           Control.Monad.Reader
+import qualified Data.Map             as M
 import           Network
 import           Network.IRC
 import           System.IO
-import           System.IO.UTF8           as UTF8
+import           System.IO.UTF8       as UTF8
 
-import           Hulk.Types
 import           Hulk.Client
+import           Hulk.Providers ()
+import           Hulk.Types
 
 -- | Start an IRC server with the given configuration.
 start :: Config -> IO ()
@@ -29,18 +31,19 @@ start config = withSocketsDo $ do
                     , connHostname = host
                     , connServerName = configHostname config
                     }
-    _ <- forkIO $ handleClient handle envar conn
+    _ <- forkIO $ handleClient config handle envar conn
     return ()
 
 -- | Handle a client connection.
-handleClient :: Handle -> MVar Env -> Conn -> IO ()
-handleClient handle env conn = do
+handleClient :: Config -> Handle -> MVar Env -> Conn -> IO ()
+handleClient config handle env conn = do
   fix $ \loop -> do
     line <- catch (Right <$> UTF8.hGetLine handle) (return . Left)
     case filter (not.newline) <$> line of
       Right []   -> loop
-      Right line -> do runClientHandler env handle conn (line++"\r"); loop
-      Left _err  -> runClientHandler env handle conn $ 
+      Right line -> do runClientHandler config env handle conn (line++"\r")
+                       loop
+      Left _err  -> runClientHandler config env handle conn $ 
                       makeLine DISCONNECT ["Connection lost."]
 
   where newline c = c=='\n' || c=='\r'
@@ -53,10 +56,10 @@ makeLine event params = (++"\r") $ encode $
           , msg_params = params }
 
 -- | Handle a received line from the client.
-runClientHandler :: MVar Env -> Handle -> Conn -> String -> IO ()
-runClientHandler env handle conn line = do
+runClientHandler :: Config -> MVar Env -> Handle -> Conn -> String -> IO ()
+runClientHandler config env handle conn line = do
   modifyMVar_ env $ \env -> do
-    (replies,env) <- handleLine env conn line
+    (replies,env) <- runReaderT (runHulkIO $ handleLine env conn line) config
     mapM_ (handleReplies handle) replies
     return env
 

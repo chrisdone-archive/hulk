@@ -16,20 +16,21 @@ import           Data.Maybe
 import           Network.IRC          hiding (Channel)
 import           Prelude              hiding (log)
 
+import           Hulk.Auth
 import           Hulk.Event
 import           Hulk.Types
 
 -- Entry point handler
 
 -- | Handle an incoming line, try to parse it and handle the message.
-handleLine :: Monad m => Env -> Conn -> String -> m ([Reply],Env)
+handleLine :: MonadProvider m => Env -> Conn -> String -> m ([Reply],Env)
 handleLine env conn line = runClient env conn $
   case decode line of
     Just Message{..} -> handleMsg line (readEventType msg_command,msg_params)
     Nothing  -> errorReply $ "Unable to parse " ++ show line
 
 -- | Run the client monad.    
-runClient :: Monad m => Env -> Conn -> IRC m () -> m ([Reply],Env)
+runClient :: MonadProvider m => Env -> Conn -> IRC m () -> m ([Reply],Env)
 runClient env conn m = do
   flip runStateT env $ 
     execWriterT $ 
@@ -37,7 +38,7 @@ runClient env conn m = do
         runIRC m
 
 -- | Handle an incoming message.
-handleMsg :: Monad m => String -> (Event,[String]) -> IRC m ()
+handleMsg :: MonadProvider m => String -> (Event,[String]) -> IRC m ()
 handleMsg line msg =
   case msg of
     (NOTHING,_) -> return ()
@@ -45,7 +46,8 @@ handleMsg line msg =
     safeToLog -> handleMsgSafeToLog line safeToLog
     
 -- | Handle messages that are safe to log.
-handleMsgSafeToLog :: Monad m => String -> (Event,[String]) -> IRC m ()
+handleMsgSafeToLog :: MonadProvider m => String -> (Event,[String]) 
+                   -> IRC m ()
 handleMsgSafeToLog line safeToLog = do
   incoming line
   case safeToLog of
@@ -72,14 +74,14 @@ handleMsgReg'd _line mustBeReg'd =
 -- Message handlers
 
 -- | Handle the PASS message.
-handlePass :: Monad m => String -> IRC m ()
+handlePass :: MonadProvider m => String -> IRC m ()
 handlePass pass = do
   modifyUnregistered $ \u -> u { unregUserPass = Just pass }
   notice "Received password."
   tryRegister
 
 -- | Handle the USER message.
-handleUser :: Monad m => String -> String -> IRC m ()
+handleUser :: MonadProvider m => String -> String -> IRC m ()
 handleUser user realname = do
   if validUser user
      then do modifyUnregistered $ \u -> u { unregUserUser = Just user
@@ -89,7 +91,7 @@ handleUser user realname = do
      else errorReply "Invalid user format."
 
 -- | Handle the USER message.
-handleNick :: Monad m => String -> IRC m ()
+handleNick :: MonadProvider m => String -> IRC m ()
 handleNick nick =
   withValidNick nick $ \nick ->
     ifUniqueNick nick $ do
@@ -245,7 +247,7 @@ ifUniqueNick nick m = do
     Just{}  -> errorReply $ "That nick is already in use: " ++ unNick nick
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
-tryRegister :: Monad m => IRC m ()
+tryRegister :: MonadProvider m => IRC m ()
 tryRegister =
   withUnegistered $ \UnregUser{..} -> do
     let details = (,,,) <$> unregUserName
@@ -255,11 +257,14 @@ tryRegister =
     case details of
       Nothing -> return ()
       Just (name,nick,user,pass) -> do
-          modifyUser $ \_ ->
-            Registered $ RegUser name nick user pass
-          sendWelcome
-          sendMotd
-          
+        authentic <- lift $ authenticate user pass
+        if not authentic
+           then errorReply $ "Wrong user/pass."
+           else do modifyUser $ \_ ->
+                     Registered $ RegUser name nick user pass
+                   sendWelcome
+                   sendMotd
+
 -- | Send the welcome message.
 sendWelcome :: Monad m => IRC m ()
 sendWelcome = do
