@@ -1,12 +1,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Hulk.Types where
 
+import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Control.Monad.Reader
+import Data.Function
 import Data.Map             (Map)
-import Network.IRC          hiding (Channel)
 import Network
+import Network.IRC          hiding (Channel)
+import System.IO
 
 data Config = Config {
       configListen :: PortNumber
@@ -17,7 +19,15 @@ data Config = Config {
     , configPasswdKey :: FilePath
     } deriving (Show)
 
-data Ref = Ref deriving (Show,Ord,Eq)
+newtype Ref = Ref { unRef :: Handle } 
+    deriving (Show,Eq)
+
+instance Ord Ref where
+  compare = on compare show
+
+-- | Construct a Ref value.
+newRef :: Handle -> Ref
+newRef = Ref
 
 data Error = Error String
 
