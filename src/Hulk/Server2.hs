@@ -146,8 +146,12 @@ newUnregisteredUser = Unregistered $ UnregUser {
 
 -- | Send a message reply.
 notice :: Monad m => String -> IRC m ()
-notice msg = do
-  msg <- newServerMsg "NOTICE" [msg]
+notice msg = serverReply "NOTICE" [msg]
+  
+-- | Send a server reply of the given type with the given params.
+serverReply :: Monad m => String -> [String] -> IRC m ()
+serverReply typ params = do
+  msg <- newServerMsg typ params
   tell . return . MessageReply $ msg
 
 -- | Make a new IRC message from the server.
