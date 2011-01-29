@@ -253,7 +253,7 @@ ifUniqueNick nick m = do
   client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
   case client of
     Nothing -> m
-    Just{}  -> errorReply $ "That nick is already in use: " ++ unNick nick
+    Just{}  -> thisServerReply "433" ["Nick is already in use."]
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
 tryRegister :: MonadProvider m => IRC m ()
