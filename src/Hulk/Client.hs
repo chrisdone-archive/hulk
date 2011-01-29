@@ -209,9 +209,24 @@ tryRegister =
                         <*> unregUserPass
     case details of
       Nothing -> return ()
-      Just (name,nick,user,pass) -> 
+      Just (name,nick,user,pass) -> do
           modifyUser $ \_ ->
             Registered $ RegUser name nick user pass
+          sendWelcome
+          sendMotd
+          
+-- | Send the welcome message.
+sendWelcome :: Monad m => IRC m ()
+sendWelcome = do
+  withRegistered $ \RegUser{..} -> do
+    thisServerReply "001" [regUserNick,"Welcome."]
+    
+sendMotd :: Monad m => IRC m ()
+sendMotd = do
+  withRegistered $ \RegUser{regUserNick=nick} -> do
+    thisServerReply "375" [nick,"MOTD"]
+    -- TODO: MOTD.
+    thisServerReply "376" [nick,"/MOTD."]
 
 -- | Send a client reply to a user.
 userReply :: Monad m => String -> String -> [String] -> IRC m ()
