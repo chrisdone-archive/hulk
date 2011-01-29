@@ -22,11 +22,19 @@ import           Hulk.Types
 -- Entry point handler
 
 -- | Handle an incoming line, try to parse it and handle the message.
-handleLine :: Monad m => String -> IRC m ()
-handleLine line =
+handleLine :: Monad m => Env -> Conn -> String -> m ([Reply],Env)
+handleLine env conn line = runClient env conn $
   case decode line of
     Just msg -> handleMsg line msg
     Nothing  -> errorReply $ "Unable to parse " ++ show line
+
+-- | Run the client monad.    
+runClient :: Monad m => Env -> Conn -> IRC m () -> m ([Reply],Env)
+runClient env conn m = do
+  flip runStateT env $ 
+    execWriterT $ 
+      flip runReaderT conn $
+        runIRC m
 
 -- | Handle an incoming message.
 handleMsg :: Monad m => String -> Message -> IRC m ()
