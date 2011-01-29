@@ -67,13 +67,13 @@ handleUser user realname = do
 handleNick :: Monad m => String -> IRC m ()
 handleNick nick = do
   modifyUnregistered $ \u -> u { unregUserNick = Just nick }
-  clientReply "NICK" [nick]
+  thisClientReply "NICK" [nick]
 
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
 handlePing p = do
   hostname <- asks connServerName
-  serverReply "PONG" [hostname,p]
+  thisServerReply "PONG" [hostname,p]
 
 handleQuit = undefined
 handleTell = undefined
@@ -160,13 +160,20 @@ newUnregisteredUser = Unregistered $ UnregUser {
 
 -- Client replies
 
--- | Send a client reply of the given type with the given params.
-clientReply :: Monad m => String -> [String] -> IRC m ()
-clientReply typ params = do
+-- | Send a client reply to the current client.
+thisClientReply :: Monad m => String -> [String] -> IRC m ()
+thisClientReply typ params = do
+  ref <- asks connRef
+  clientReply ref typ params
+
+-- | Send a client reply of the given type with the given params, on
+-- the given connection reference.
+clientReply :: Monad m => Ref -> String -> [String] -> IRC m ()
+clientReply ref typ params = do
   withRegistered $ \user -> do
     client <- getClient
     msg <- newClientMsg client user typ params
-    tell . return . MessageReply $ msg
+    tell . return . MessageReply ref $ msg
 
 -- | Make a new IRC message from the current client.
 newClientMsg :: Monad m => Client -> RegUser -> String -> [String] 
@@ -183,13 +190,19 @@ newClientMsg Client{..} RegUser{..} cmd ps = do
 
 -- | Send a message reply.
 notice :: Monad m => String -> IRC m ()
-notice msg = serverReply "NOTICE" [msg]
-  
+notice msg = thisServerReply "NOTICE" [msg]
+
 -- | Send a server reply of the given type with the given params.
-serverReply :: Monad m => String -> [String] -> IRC m ()
-serverReply typ params = do
+thisServerReply :: Monad m => String -> [String] -> IRC m ()
+thisServerReply typ params = do
+  ref <- asks connRef
+  serverReply ref typ params
+
+-- | Send a server reply of the given type with the given params.
+serverReply :: Monad m => Ref -> String -> [String] -> IRC m ()
+serverReply ref typ params = do
   msg <- newServerMsg typ params
-  tell . return . MessageReply $ msg
+  tell . return . MessageReply ref $ msg
 
 -- | Make a new IRC message from the server.
 newServerMsg :: Monad m => String -> [String] -> IRC m Message
@@ -208,8 +221,8 @@ errorReply :: Monad m => String -> IRC m ()
 errorReply = tell . return . ErrorReply . Error
 
 -- | Send a message reply.
-reply :: Monad m => Message -> IRC m ()
-reply = tell . return . MessageReply
+reply :: Monad m => Ref -> Message -> IRC m ()
+reply ref = tell . return . MessageReply ref
 
 -- | Log an incoming line.
 incoming :: Monad m => String -> IRC m ()

@@ -52,7 +52,7 @@ data Conn = Conn {
   ,connServerName :: String
 } deriving Show
 
-data Reply = ErrorReply Error | MessageReply Message | LogReply String
+data Reply = ErrorReply Error | MessageReply Ref Message | LogReply String
 
 newtype IRC m a = IRC { 
       runIRC :: ReaderT Conn (WriterT [Reply] (StateT Env m)) a
