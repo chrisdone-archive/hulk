@@ -37,14 +37,14 @@ start config = withSocketsDo $ do
 -- | Handle a client connection.
 handleClient :: Config -> Handle -> MVar Env -> Conn -> IO ()
 handleClient config handle env conn = do
+  let runHandle = runClientHandler config env handle conn
+  runHandle $ makeLine CONNECT []
   fix $ \loop -> do
     line <- catch (Right <$> UTF8.hGetLine handle) (return . Left)
     case filter (not.newline) <$> line of
       Right []   -> loop
-      Right line -> do runClientHandler config env handle conn (line++"\r")
-                       loop
-      Left _err  -> runClientHandler config env handle conn $ 
-                      makeLine DISCONNECT ["Connection lost."]
+      Right line -> do runHandle (line++"\r"); loop
+      Left _err  -> runHandle $ makeLine DISCONNECT ["Connection lost."]
 
   where newline c = c=='\n' || c=='\r'
 

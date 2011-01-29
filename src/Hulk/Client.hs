@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns, ViewPatterns #-}
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
 module Hulk.Client 
     (handleLine)
@@ -57,6 +57,7 @@ handleMsgSafeToLog line safeToLog = do
     (QUIT,[msg])    -> handleQuit RequestedQuit msg
     (TELL,[to,msg]) -> handleTell to msg
     (DISCONNECT,[msg]) -> handleQuit SocketQuit msg
+    (CONNECT,_)        -> handleConnect
     mustBeReg'd -> handleMsgReg'd line mustBeReg'd
 
 -- | Handle messages that can only be used when registered.
@@ -72,6 +73,14 @@ handleMsgReg'd _line mustBeReg'd =
                        " enough parameters: " ++ show (fst mustBeReg'd)
 
 -- Message handlers
+
+-- | Handle the CONNECT event.
+handleConnect :: MonadProvider m => IRC m ()
+handleConnect = do
+  motd <- fmap lines <$> lift providePreface
+  case motd of
+    Nothing -> return ()
+    Just lines -> mapM_ notice lines
 
 -- | Handle the PASS message.
 handlePass :: MonadProvider m => String -> IRC m ()
@@ -270,13 +279,18 @@ sendWelcome :: Monad m => IRC m ()
 sendWelcome = do
   withRegistered $ \RegUser{..} -> do
     thisServerReply "001" [unNick regUserNick,"Welcome."]
-    
-sendMotd :: Monad m => IRC m ()
+
+-- | Send the MOTD.    
+sendMotd :: MonadProvider m => IRC m ()
 sendMotd = do
-  withRegistered $ \RegUser{regUserNick=nick} -> do
-    thisServerReply "375" [unNick nick,"MOTD"]
-    -- TODO: MOTD.
-    thisServerReply "376" [unNick nick,"/MOTD."]
+  withRegistered $ \RegUser{regUserNick=Nick nick} -> do
+    thisServerReply "375" [nick,"MOTD"]
+    motd <- fmap lines <$> lift provideMotd
+    let motdLine line = thisServerReply "372" [nick,line]
+    case motd of
+      Nothing -> motdLine "None."
+      Just lines -> mapM_ motdLine lines
+    thisServerReply "376" [nick,"/MOTD."]
 
 -- | Send a client reply to a user.
 userReply :: Monad m => String -> String -> [String] -> IRC m ()
