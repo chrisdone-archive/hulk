@@ -6,6 +6,16 @@ import Control.Monad.Writer
 import Control.Monad.Reader
 import Data.Map             (Map)
 import Network.IRC          hiding (Channel)
+import Network
+
+data Config = Config {
+      configListen :: PortNumber
+    , configHostname :: String
+    , configMotd :: Maybe FilePath
+    , configPreface :: Maybe FilePath
+    , configPasswd :: FilePath
+    , configPasswdKey :: FilePath
+    } deriving (Show)
 
 data Ref = Ref deriving (Show,Ord,Eq)
 
