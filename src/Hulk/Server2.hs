@@ -78,10 +78,14 @@ handlePing p = do
   hostname <- asks connServerName
   thisServerReply "PONG" [hostname,p]
 
-handleQuit = undefined
+-- | Handle the QUIT message.
+handleQuit :: Monad m => String -> IRC m ()
+handleQuit msg = do
+ (myChannels >>=) $ mapM_ $ \Channel{..} -> do
+   channelReply channelName "QUIT" [msg]
+ notice "Bye bye!"
 
 -- | Handle the TELL message.
-
 handleTell :: Monad m => String -> String -> IRC m ()
 handleTell name msg = sendMsgTo "PRIVMSG" name msg
 
@@ -122,6 +126,12 @@ sendMsgTo typ name msg =
      else userReply name typ [msg]
 
 -- Channel functions
+
+-- | Get channels that the current client is in.
+myChannels :: Monad m => IRC m [Channel]
+myChannels = do
+  ref <- asks connRef
+  filter (elem ref . channelUsers) . map snd . M.toList <$> gets envChannels
 
 -- | Join a channel.
 joinChannel :: Monad m => String -> IRC m ()
