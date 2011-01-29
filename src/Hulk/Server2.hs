@@ -108,7 +108,9 @@ handlePart name msg =
 handlePrivmsg :: Monad m => String -> String -> IRC m ()
 handlePrivmsg name msg = sendMsgTo "PRIVMSG" name msg
 
-handleNotice = undefined
+-- | Handle the NOTICE message.
+handleNotice :: Monad m => String -> String -> IRC m ()
+handleNotice name msg = sendMsgTo "NOTICE" name msg
 
 -- Generic message functions
 
