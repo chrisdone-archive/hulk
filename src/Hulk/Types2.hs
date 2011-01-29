@@ -19,7 +19,7 @@ data Env = Env {
 
 data Channel = Channel {
       channelName :: String
-    , channelTopic :: String
+    , channelTopic :: Maybe String
     , channelUsers :: [Ref]
 } deriving Show
 

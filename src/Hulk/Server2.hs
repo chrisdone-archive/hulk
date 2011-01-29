@@ -7,8 +7,11 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Writer
 import           Data.Char
+import           Data.List.Split
+import           Data.Map             (Map)
 import qualified Data.Map             as M
-import           Network.IRC
+import           Data.Maybe
+import           Network.IRC          hiding (Channel)
 import           Prelude              hiding (log)
 
 import           Hulk.Types2
@@ -77,13 +80,76 @@ handlePing p = do
 
 handleQuit = undefined
 handleTell = undefined
-handleJoin = undefined
+
+-- | Handle the JOIN message.
+handleJoin :: Monad m => String -> IRC m ()
+handleJoin chans = do
+  ref <- asks connRef
+  let names = splitWhen (==',') chans
+  forM_ names $ \name -> do
+    exists <- M.member name <$> gets envChannels
+    unless exists $ insertChannel name
+    joined <- inChannel name
+    unless joined $ joinChannel name
+
 handlePart = undefined
 handlePrivmsg = undefined
 handleNotice = undefined
 
+-- Channel functions
+
+-- | Join a channel.
+joinChannel :: Monad m => String -> IRC m ()
+joinChannel name = do
+  ref <- asks connRef
+  let addMe c = c { channelUsers = channelUsers c ++ [ref] }
+  modifyChannels $ M.adjust addMe name
+  channelReply name "JOIN" [name]
+  withRegistered $ \RegUser{regUserNick=me} ->
+    withChannel name $ \Channel{..} -> do
+      clients <- catMaybes <$> mapM getClientByRef channelUsers
+      let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
+      forM_ (splitEvery 10 nicks) $ \nicks ->
+        thisServerReply "353" [me,"@",name,unwords nicks]
+      thisServerReply "366" [me,name,"End of /NAMES list."]
+
+-- | Am I in a channel?
+inChannel :: Monad m => String -> IRC m Bool
+inChannel name = do
+  chan <- M.lookup name <$> gets envChannels
+  case chan of
+    Nothing -> return False
+    Just Channel{..} -> (`elem` channelUsers) <$> asks connRef
+
+-- | Insert a new channel.
+insertChannel :: Monad m => String -> IRC m ()
+insertChannel name = modifyChannels $ M.insert name newChan where
+  newChan = Channel { channelName  = name
+                    , channelTopic = Nothing
+                    , channelUsers = []
+                    }
+
+-- | Modify the channel map.
+modifyChannels :: Monad m => (Map String Channel -> Map String Channel) 
+               -> IRC m ()
+modifyChannels f = modify $ \e -> e { envChannels = f (envChannels e) }
+
+-- | Perform an action with an existing channel, sends error if not exists.
+withChannel :: Monad m => String -> (Channel -> IRC m ()) -> IRC m ()
+withChannel name m = do
+  chan <- M.lookup name <$> gets envChannels
+  case chan of
+    Nothing -> errorReply "Channel does not exist."
+    Just chan -> m chan
+
 -- Client/user access functions
 
+clientRegUser :: Client -> Maybe RegUser
+clientRegUser Client{..} = 
+    case clientUser of
+      Registered u -> Just u
+      _ -> Nothing
+  
 -- | Modify the current user if unregistered.
 modifyUnregistered :: Monad m => (UnregUser -> UnregUser) -> IRC m ()
 modifyUnregistered f = do
@@ -130,6 +196,12 @@ getUser :: Monad m => IRC m User
 getUser = clientUser <$> getClient
 
 -- | Get the current client.
+getClientByRef :: Monad m => Ref -> IRC m (Maybe Client)
+getClientByRef ref = do
+  clients <- gets envClients
+  return $ M.lookup ref clients
+
+-- | Get the current client.
 getClient :: Monad m => IRC m Client
 getClient = do
   ref <- asks connRef
@@ -145,12 +217,6 @@ makeNewClient = do
   let client = Client { clientRef = connRef conn
                       , clientHostname = connHostname conn
                       , clientUser = newUnregisteredUser }
-clientRegUser :: Client -> Maybe RegUser
-clientRegUser Client{..} = 
-    case clientUser of
-      Registered u -> Just u
-      _ -> Nothing
-  
       addMe = M.insert (connRef conn) client
   modify $ \env -> env { envClients = addMe (envClients env) }
   return client
@@ -163,6 +229,15 @@ newUnregisteredUser = Unregistered $ UnregUser {
   ,unregUserUser = Nothing
   ,unregUserPass = Nothing
   }
+
+-- Channel replies
+
+-- | Send a client reply to everyone in a channel.
+channelReply :: Monad m => String -> String -> [String] -> IRC m ()
+channelReply name cmd params = do
+  withChannel name $ \Channel{..} -> do
+    forM_ channelUsers $ \ref -> do
+      clientReply ref cmd params
 
 -- Client replies
 
@@ -197,12 +272,6 @@ newClientMsg Client{..} RegUser{..} cmd ps = do
 -- | Send a message reply.
 notice :: Monad m => String -> IRC m ()
 notice msg = thisServerReply "NOTICE" [msg]
-getClientByRef :: Monad m => Ref -> IRC m (Maybe Client)
-getClientByRef ref = do
-  clients <- gets envClients
-  return $ M.lookup ref clients
-
--- | Get the current client.
 
 -- | Send a server reply of the given type with the given params.
 thisServerReply :: Monad m => String -> [String] -> IRC m ()
