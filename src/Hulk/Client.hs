@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns, ViewPatterns #-}
+{-# LANGUAGE RecordWildCards, ViewPatterns #-}
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
 module Hulk.Client 
     (handleLine)
