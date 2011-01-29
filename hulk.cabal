@@ -12,6 +12,7 @@ Cabal-version:       >=1.2
 
 Executable hulk
   Main-is:           Main.hs
+  Ghc-options:       -threaded
   Hs-Source-Dirs:    src
   Build-depends:     base >= 4 && <5
                     ,cmdargs == 0.6.*
