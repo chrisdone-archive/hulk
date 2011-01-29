@@ -100,6 +100,14 @@ asRegistered m = do
   registered <- isRegistered <$> getUser
   when registered m
 
+-- | Perform command with a registered user.
+withRegistered :: Monad m => (RegUser -> IRC m ()) -> IRC m ()
+withRegistered m = do
+  user <- getUser
+  case user of
+    Registered user -> m user
+    _ -> return ()
+
 -- | Only perform command if the client is registered.
 asUnregistered :: Monad m => IRC m () -> IRC m ()
 asUnregistered m = do
