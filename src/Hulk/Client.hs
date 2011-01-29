@@ -109,8 +109,8 @@ handleNick nick =
       modifyUnregistered $ \u -> u { unregUserNick = Just nick }
       tryRegister
       asRegistered $ do
-        modifyRegistered $ \u -> u { regUserNick = nick }
         thisClientReply "NICK" [unNick nick]
+        modifyRegistered $ \u -> u { regUserNick = nick }
 
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
@@ -253,7 +253,7 @@ ifUniqueNick nick m = do
   client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
   case client of
     Nothing -> m
-    Just{}  -> thisServerReply "433" ["Nick is already in use."]
+    Just{}  -> thisServerReply "433" [unNick nick,"Nick is already in use."]
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
 tryRegister :: MonadProvider m => IRC m ()
