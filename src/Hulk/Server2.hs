@@ -86,13 +86,17 @@ handleJoin :: Monad m => String -> IRC m ()
 handleJoin chans = do
   ref <- asks connRef
   let names = splitWhen (==',') chans
-  forM_ names $ \name -> do
-    exists <- M.member name <$> gets envChannels
-    unless exists $ insertChannel name
-    joined <- inChannel name
-    unless joined $ joinChannel name
+  forM_ names $ flip withValidChanName $ \name -> do
+      exists <- M.member name <$> gets envChannels
+      unless exists $ insertChannel name
+      joined <- inChannel name
+      unless joined $ joinChannel name
 
-handlePart = undefined
+-- | Handle the PART message.
+handlePart :: Monad m => String -> String -> IRC m ()
+handlePart chan msg = do
+  return ()
+
 handlePrivmsg = undefined
 handleNotice = undefined
 
@@ -141,6 +145,11 @@ withChannel name m = do
   case chan of
     Nothing -> errorReply "Channel does not exist."
     Just chan -> m chan
+    
+withValidChanName :: Monad m => String -> (String -> IRC m ()) -> IRC m ()
+withValidChanName name m 
+    | validChannel name = m name
+    | otherwise         = errorReply $ "Invalid channel name: " ++ name
 
 -- Client/user access functions
 
@@ -327,4 +336,9 @@ validUser = validNick
 -- | Is a nickname valid? Digit/letter or one of these: -_/\\;()[]{}?`'
 validNick :: String -> Bool
 validNick = all ok where
+  ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
+
+-- | Valid channel name?
+validChannel :: String -> Bool
+validChannel ('#':cs) = all ok cs where
   ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
