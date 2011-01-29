@@ -145,6 +145,12 @@ makeNewClient = do
   let client = Client { clientRef = connRef conn
                       , clientHostname = connHostname conn
                       , clientUser = newUnregisteredUser }
+clientRegUser :: Client -> Maybe RegUser
+clientRegUser Client{..} = 
+    case clientUser of
+      Registered u -> Just u
+      _ -> Nothing
+  
       addMe = M.insert (connRef conn) client
   modify $ \env -> env { envClients = addMe (envClients env) }
   return client
@@ -191,6 +197,12 @@ newClientMsg Client{..} RegUser{..} cmd ps = do
 -- | Send a message reply.
 notice :: Monad m => String -> IRC m ()
 notice msg = thisServerReply "NOTICE" [msg]
+getClientByRef :: Monad m => Ref -> IRC m (Maybe Client)
+getClientByRef ref = do
+  clients <- gets envClients
+  return $ M.lookup ref clients
+
+-- | Get the current client.
 
 -- | Send a server reply of the given type with the given params.
 thisServerReply :: Monad m => String -> [String] -> IRC m ()
