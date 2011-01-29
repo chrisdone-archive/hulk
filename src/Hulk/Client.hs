@@ -157,7 +157,7 @@ sendMsgTo :: Monad m => String -> String -> String -> IRC m ()
 sendMsgTo typ name msg =
   if validChannel name
      then withValidChanName name $ \name -> 
-            channelReply name typ [msg] ExcludeMe
+            channelReply name typ [unChanName name,msg] ExcludeMe
      else userReply name typ [msg]
 
 -- Channel functions
