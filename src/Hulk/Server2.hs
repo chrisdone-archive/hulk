@@ -31,7 +31,7 @@ handleMsg line Message{..} =
       incoming line
       case safeToLog of
         ("USER",[user,_,_,realname]) -> 
-            asUnregistered $ handleUser realname user
+            asUnregistered $ handleUser user realname
         ("NICK",[nick])   -> handleNick nick
         ("PING",[param])  -> handlePing param
         ("QUIT",[msg])    -> handleQuit msg
@@ -54,8 +54,20 @@ handlePass pass = do
   modifyUnregistered $ \u -> u { unregUserPass = Just pass }
   notice "Received password."
 
-handleUser = undefined
-handleNick = undefined
+-- | Handle the USER message.
+handleUser :: Monad m => String -> String -> IRC m ()
+handleUser user realname = do
+  if validUser user
+     then do modifyUnregistered $ \u -> u { unregUserUser = Just user
+                                          , unregUserName = Just realname }
+             notice "Recieved user details."
+     else errorReply "Invalid user format."
+
+-- | Handle the USER message.
+handleNick :: Monad m => String -> IRC m ()
+handleNick user = do
+  modifyUnregistered
+
 handlePing = undefined
 handleQuit = undefined
 handleTell = undefined
