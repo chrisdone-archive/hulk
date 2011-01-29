@@ -152,6 +152,27 @@ newUnregisteredUser = Unregistered $ UnregUser {
   ,unregUserPass = Nothing
   }
 
+-- Client replies
+
+-- | Send a client reply of the given type with the given params.
+clientReply :: Monad m => String -> [String] -> IRC m ()
+clientReply typ params = do
+  withRegistered $ \user -> do
+    client <- getClient
+    msg <- newClientMsg client user typ params
+    tell . return . MessageReply $ msg
+
+-- | Make a new IRC message from the current client.
+newClientMsg :: Monad m => Client -> RegUser -> String -> [String] 
+             -> IRC m Message
+newClientMsg Client{..} RegUser{..} cmd ps = do
+  let nickName = NickName regUserUser (Just regUserNick) (Just clientHostname)
+  return $ Message {
+    msg_prefix = Just $ nickName
+   ,msg_command = cmd
+   ,msg_params = ps
+  }
+
 -- Server replies
 
 -- | Send a message reply.
