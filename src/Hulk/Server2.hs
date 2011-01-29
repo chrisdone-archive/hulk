@@ -122,6 +122,8 @@ sendMsgTo typ name msg =
 joinChannel :: Monad m => String -> IRC m ()
 joinChannel name = do
   ref <- asks connRef
+-- Channel functions
+
   let addMe c = c { channelUsers = channelUsers c ++ [ref] }
   modifyChannels $ M.adjust addMe name
   channelReply name "JOIN" [name]
