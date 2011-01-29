@@ -102,7 +102,7 @@ handleQuit msg = do
 
 -- | Handle the TELL message.
 handleTell :: Monad m => String -> String -> IRC m ()
-handleTell name msg = sendMsgTo "PRIVMSG" name msg
+handleTell name msg = sendMsgTo "NOTICE" name msg
 
 -- | Handle the JOIN message.
 handleJoin :: Monad m => String -> IRC m ()
