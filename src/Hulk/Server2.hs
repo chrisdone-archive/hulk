@@ -79,7 +79,11 @@ handlePing p = do
   thisServerReply "PONG" [hostname,p]
 
 handleQuit = undefined
-handleTell = undefined
+
+-- | Handle the TELL message.
+
+handleTell :: Monad m => String -> String -> IRC m ()
+handleTell name msg = sendMsgTo "PRIVMSG" name msg
 
 -- | Handle the JOIN message.
 handleJoin :: Monad m => String -> IRC m ()
@@ -104,12 +108,12 @@ handlePart name msg =
 -- | Handle the PRIVMSG message.
 handlePrivmsg :: Monad m => String -> String -> IRC m ()
 handlePrivmsg name msg = sendMsgTo "PRIVMSG" name msg
-
-handleNotice = undefined
-
 -- Channel functions
 
 -- | Join a channel.
+
+handleNotice = undefined
+
 -- Generic message functions
 
 -- | Send a message to a user or a channel (it figures it out).
@@ -119,11 +123,11 @@ sendMsgTo typ name msg =
      then channelReply name typ [msg]
      else userReply name typ [msg]
 
+-- Channel functions
+
 joinChannel :: Monad m => String -> IRC m ()
 joinChannel name = do
   ref <- asks connRef
--- Channel functions
-
   let addMe c = c { channelUsers = channelUsers c ++ [ref] }
   modifyChannels $ M.adjust addMe name
   channelReply name "JOIN" [name]
