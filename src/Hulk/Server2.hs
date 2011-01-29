@@ -69,7 +69,12 @@ handleNick nick = do
   modifyUnregistered $ \u -> u { unregUserNick = Just nick }
   clientReply "NICK" [nick]
 
-handlePing = undefined
+-- | Handle the PING message.
+handlePing :: Monad m => String -> IRC m ()
+handlePing p = do
+  hostname <- asks connServerName
+  serverReply "PONG" [hostname,p]
+
 handleQuit = undefined
 handleTell = undefined
 handleJoin = undefined
