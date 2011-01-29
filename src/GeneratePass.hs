@@ -1,20 +1,16 @@
-{-# LANGUAGE DeriveDataTypeable, RecordWildCards, ScopedTypeVariables #-} 
-{-# OPTIONS -Wall -fno-warn-missing-signatures #-}
+{-# LANGUAGE DeriveDataTypeable, RecordWildCards, ScopedTypeVariables #-}
+{-# OPTIONS -Wall -fno-warn-missing-signatures -fno-warn-name-shadowing #-}
 module Main where
 
 import System.Console.CmdArgs
-import Control.Arrow
 import Data.HMAC
 import Codec.Binary.UTF8.String
 import Numeric
-import Control.Monad.IO
 import Data.String
 import Control.Applicative
-import System.Environment
 
 import Hulk.Types
 import Hulk.Config
-import Hulk.Auth
 
 data Options = Options
   { conf      :: FilePath

@@ -1,11 +1,9 @@
 {-# OPTIONS -Wall -fno-warn-missing-signatures -fno-warn-name-shadowing #-}
 module Hulk.Config
     (Config(..)
-    ,getConfig
-    ,config)
+    ,getConfig)
     where
 
-import Control.Monad.Reader
 import Data.Word
 import Data.ConfigFile
 
@@ -32,6 +30,3 @@ getConfig conf = do
   case config of
     Left cperr -> error $ show cperr
     Right config -> return config
-
-config :: (Config -> a) -> Hulk a
-config f = asks $ f . envConfig

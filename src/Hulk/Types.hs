@@ -1,28 +1,17 @@
-{-# OPTIONS -Wall -fno-warn-missing-signatures #-}
-{-# OPTIONS -fno-warn-orphans #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving, FlexibleInstances #-}
+{-# OPTIONS -Wall -fno-warn-name-shadowing #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Hulk.Types where
-    
-import Data.Function
-import Control.Applicative
-import Control.Concurrent
+
 import Control.Monad.Reader
-import Data.Map
+import Control.Monad.State
+import Control.Monad.Writer
+import Control.Monad.Identity
+import Data.Char
+import Data.Function
+import Data.Map             (Map)
 import Network
+import Network.IRC          hiding (Channel)
 import System.IO
-
-instance Monad x => Applicative (ReaderT a x) where
-  (<*>) = ap; pure = return
-
-data Env = Env {
-      envConfig :: Config
-    , envTellHandle :: MVar Handle
-    , envLogColumn :: Int
-    , envListenSock :: Socket
-    , envClients :: MVar (Map Ref Client)
-    , envNicks :: MVar (Map String Ref)
-    , envChannels :: MVar (Map String Channel)
-    }
 
 data Config = Config {
       configListen :: PortNumber
@@ -32,45 +21,108 @@ data Config = Config {
     , configPasswd :: FilePath
     , configPasswdKey :: FilePath
     } deriving (Show)
-    
+
+newtype Ref = Ref { unRef :: Handle } 
+    deriving (Show,Eq)
+
+instance Ord Ref where
+  compare = on compare show
+
+-- | Construct a Ref value.
+newRef :: Handle -> Ref
+newRef = Ref
+
+data Error = Error String
+
+data Env = Env {
+   envClients :: Map Ref Client
+  ,envNicks :: Map Nick Ref
+  ,envChannels :: Map ChannelName Channel
+}
+
+newtype Nick = Nick { unNick :: String } deriving Show
+
+instance Ord Nick where
+  compare = on compare (map toLower . unNick)
+instance Eq Nick where
+  (==) = on (==) (map toLower . unNick)
+
+newtype ChannelName = ChannelName { unChanName :: String } deriving Show
+  
+instance Ord ChannelName where
+  compare = on compare (map toLower . unChanName)
+instance Eq ChannelName where
+  (==) = on (==) (map toLower . unChanName)
+
 data Channel = Channel {
-      channelName :: String
-    , channelTopic :: String
+      channelName :: ChannelName
+    , channelTopic :: Maybe String
     , channelUsers :: [Ref]
 } deriving Show
 
-data User = User {
-      userUser :: String
-    , userName :: String
-    , userNick :: String
-    , userPass :: Maybe String
-    , userRegistered :: Bool
-    } deriving (Show,Eq,Ord)
+data User = Unregistered UnregUser | Registered RegUser
+  deriving Show
+
+data UnregUser = UnregUser {
+   unregUserName :: Maybe String
+  ,unregUserNick :: Maybe Nick
+  ,unregUserUser :: Maybe String
+  ,unregUserPass :: Maybe String
+} deriving Show
+
+data RegUser = RegUser {
+   regUserName :: String
+  ,regUserNick :: Nick
+  ,regUserUser :: String
+  ,regUserPass :: String
+} deriving Show
 
 data Client = Client {
-      clientUser :: MVar (Maybe User)
-    , clientHandle :: MVar Ref
-    , clientHostName :: String
-    , clientPort :: PortNumber
+      clientRef :: Ref
+    , clientUser :: User
+    , clientHostname :: String
     } deriving Show
-    
-instance Show (MVar Ref) where show _ = "MVar Ref"
-instance Show (MVar (Maybe User)) where show _ = "MVar (Maybe User)"
-instance Show (MVar (Map String Ref)) where show _ = "MVar (Map String Ref)"
 
-newtype Ref = Ref { unRef :: Handle }
-  deriving (Eq,Show)
+data Conn = Conn {
+   connRef :: Ref
+  ,connHostname :: String
+  ,connServerName :: String
+} deriving Show
 
-instance Ord Ref where compare = on compare show
+data Reply = MessageReply Ref Message | LogReply String | Close
 
-newtype Hulk a = Hulk { runHulk :: ReaderT Env IO a }
-  deriving (Functor,Applicative,Monad,MonadReader Env,MonadIO)
+newtype IRC m a = IRC { 
+    runIRC :: ReaderT Conn (WriterT [Reply] (StateT Env m)) a
+  }
+  deriving (Monad
+           ,Functor
+           ,MonadWriter [Reply]
+           ,MonadState Env
+           ,MonadReader Conn)
 
-newtype IRC a = IRC { runIRC :: ReaderT Client Hulk a }
-  deriving (Functor,Applicative,Monad,MonadReader Client,MonadIO)
+data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
+           | NOTICE | CONNECT | DISCONNECT | NOTHING
+  deriving (Read,Show)
 
-class (MonadIO m,Monad m) => Loggable m where
-  tell :: String -> m ()
+data QuitType = RequestedQuit | SocketQuit deriving Eq
 
-liftHulk :: Hulk a -> IRC a
-liftHulk m = IRC $ ReaderT $ \_ -> m
+data ChannelReplyType = IncludeMe | ExcludeMe deriving Eq
+
+class Monad m => MonadProvider m where
+  providePreface   :: m (Maybe String)
+  provideMotd      :: m (Maybe String)
+  provideKey       :: m String
+  providePasswords :: m String
+
+newtype HulkIO a = HulkIO { runHulkIO :: ReaderT Config IO a }
+ deriving (Monad,MonadReader Config,Functor,MonadIO)
+
+newtype HulkP a = HulkP { runHulkPure :: Identity a }
+ deriving (Monad)
+
+instance MonadTrans IRC where
+  lift m = do
+    s <- get
+    IRC $ ReaderT $ \_ -> WriterT $ StateT $ \_ -> do
+      a <- m
+      return ((a,[]),s)
