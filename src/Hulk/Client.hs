@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
-module Hulk.Server2 where
+module Hulk.Client where
 
 import           Control.Applicative
 import           Control.Monad.Reader
