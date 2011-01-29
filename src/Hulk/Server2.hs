@@ -103,16 +103,22 @@ handlePart name msg =
 
 -- | Handle the PRIVMSG message.
 handlePrivmsg :: Monad m => String -> String -> IRC m ()
-handlePrivmsg name msg =
-  if validChannel name
-     then channelReply name "PRIVMSG" [msg]
-     else userReply name "PRIVMSG" [msg]
+handlePrivmsg name msg = sendMsgTo "PRIVMSG" name msg
 
 handleNotice = undefined
 
 -- Channel functions
 
 -- | Join a channel.
+-- Generic message functions
+
+-- | Send a message to a user or a channel (it figures it out).
+sendMsgTo :: Monad m => String -> String -> String -> IRC m ()
+sendMsgTo typ name msg =
+  if validChannel name
+     then channelReply name typ [msg]
+     else userReply name typ [msg]
+
 joinChannel :: Monad m => String -> IRC m ()
 joinChannel name = do
   ref <- asks connRef
