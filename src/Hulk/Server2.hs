@@ -47,7 +47,12 @@ handleMsg line Message{..} =
 
 -- Message handlers
 
-handlePass = undefined
+-- | Handle the PASS message.
+handlePass :: Monad m => String -> IRC m ()
+handlePass pass = do
+  modifyUnregistered $ \u -> u { unregUserPass = Just pass }
+  notice "Received password."
+
 handleUser = undefined
 handleNick = undefined
 handlePing = undefined
