@@ -14,7 +14,7 @@ import           Data.Maybe
 import           Network.IRC          hiding (Channel)
 import           Prelude              hiding (log)
 
-import           Hulk.Types2
+import           Hulk.Types
 
 -- Entry point handler
 
