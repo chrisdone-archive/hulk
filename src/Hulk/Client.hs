@@ -16,6 +16,7 @@ import           Data.Maybe
 import           Network.IRC          hiding (Channel)
 import           Prelude              hiding (log)
 
+import           Hulk.Event
 import           Hulk.Types
 
 -- Entry point handler
@@ -30,24 +31,25 @@ handleLine line =
 -- | Handle an incoming message.
 handleMsg :: Monad m => String -> Message -> IRC m ()
 handleMsg line Message{..} =
-  case (msg_command,msg_params) of
-    ("PASS",[pass]) -> asUnregistered $ handlePass pass
+  case (readEventType msg_command,msg_params) of
+    (NOTHING,_) -> return ()
+    (PASS,[pass]) -> asUnregistered $ handlePass pass
     safeToLog -> do
       incoming line
       case safeToLog of
-        ("USER",[user,_,_,realname]) -> 
+        (USER,[user,_,_,realname]) -> 
             asUnregistered $ handleUser user realname
-        ("NICK",[nick])   -> handleNick nick
-        ("PING",[param])  -> handlePing param
-        ("QUIT",[msg])    -> handleQuit msg
-        ("TELL",[to,msg]) -> handleTell to msg
+        (NICK,[nick])   -> handleNick nick
+        (PING,[param])  -> handlePing param
+        (QUIT,[msg])    -> handleQuit msg
+        (TELL,[to,msg]) -> handleTell to msg
         mustBeReg'd -> do
           asRegistered $
            case mustBeReg'd of
-             ("JOIN",(name:_))    -> handleJoin name
-             ("PART",[chan,msg])  -> handlePart chan msg
-             ("PRIVMSG",[to,msg]) -> handlePrivmsg to msg
-             ("NOTICE",[to,msg])  -> handleNotice to msg
+             (JOIN,(name:_))    -> handleJoin name
+             (PART,[chan,msg])  -> handlePart chan msg
+             (PRIVMSG,[to,msg]) -> handlePrivmsg to msg
+             (NOTICE,[to,msg])  -> handleNotice to msg
              _ -> errorReply $ "Invalid or unknown message type, or not" ++ 
                                " enough parameters: " ++ msg_command
 

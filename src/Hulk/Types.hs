@@ -72,3 +72,7 @@ newtype IRC m a = IRC {
            ,MonadWriter [Reply]
            ,MonadState Env
            ,MonadReader Conn)
+
+data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
+           | NOTICE | CONNECT | DISCONNECT | NOTHING
+  deriving (Read,Show)
