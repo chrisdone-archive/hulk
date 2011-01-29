@@ -346,3 +346,4 @@ validNick = all ok where
 validChannel :: String -> Bool
 validChannel ('#':cs) = all ok cs where
   ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
+validChannel _ = False
