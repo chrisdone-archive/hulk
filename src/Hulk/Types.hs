@@ -1,76 +1,64 @@
-{-# OPTIONS -Wall -fno-warn-missing-signatures #-}
-{-# OPTIONS -fno-warn-orphans #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving, FlexibleInstances #-}
-module Hulk.Types where
-    
-import Data.Function
-import Control.Applicative
-import Control.Concurrent
-import Control.Monad.Reader
-import Data.Map
-import Network
-import System.IO
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+module Hulk.Types2 where
 
-instance Monad x => Applicative (ReaderT a x) where
-  (<*>) = ap; pure = return
+import Control.Monad.State
+import Control.Monad.Writer
+import Control.Monad.Reader
+import Data.Map             (Map)
+import Network.IRC          hiding (Channel)
+
+data Ref = Ref deriving (Show,Ord,Eq)
+
+data Error = Error String
 
 data Env = Env {
-      envConfig :: Config
-    , envTellHandle :: MVar Handle
-    , envLogColumn :: Int
-    , envListenSock :: Socket
-    , envClients :: MVar (Map Ref Client)
-    , envNicks :: MVar (Map String Ref)
-    , envChannels :: MVar (Map String Channel)
-    }
+   envClients :: Map Ref Client
+  ,envNicks :: Map String Ref
+  ,envChannels :: Map String Channel
+}
 
-data Config = Config {
-      configListen :: PortNumber
-    , configHostname :: String
-    , configMotd :: Maybe FilePath
-    , configPreface :: Maybe FilePath
-    , configPasswd :: FilePath
-    , configPasswdKey :: FilePath
-    } deriving (Show)
-    
 data Channel = Channel {
       channelName :: String
-    , channelTopic :: String
+    , channelTopic :: Maybe String
     , channelUsers :: [Ref]
 } deriving Show
 
-data User = User {
-      userUser :: String
-    , userName :: String
-    , userNick :: String
-    , userPass :: Maybe String
-    , userRegistered :: Bool
-    } deriving (Show,Eq,Ord)
+data User = Unregistered UnregUser | Registered RegUser
+  deriving Show
+
+data UnregUser = UnregUser {
+   unregUserName :: Maybe String
+  ,unregUserNick :: Maybe String
+  ,unregUserUser :: Maybe String
+  ,unregUserPass :: Maybe String
+} deriving Show
+
+data RegUser = RegUser {
+   regUserName :: String
+  ,regUserNick :: String
+  ,regUserUser :: String
+  ,regUserPass :: String
+} deriving Show
 
 data Client = Client {
-      clientUser :: MVar (Maybe User)
-    , clientHandle :: MVar Ref
-    , clientHostName :: String
-    , clientPort :: PortNumber
+      clientRef :: Ref
+    , clientUser :: User
+    , clientHostname :: String
     } deriving Show
-    
-instance Show (MVar Ref) where show _ = "MVar Ref"
-instance Show (MVar (Maybe User)) where show _ = "MVar (Maybe User)"
-instance Show (MVar (Map String Ref)) where show _ = "MVar (Map String Ref)"
 
-newtype Ref = Ref { unRef :: Handle }
-  deriving (Eq,Show)
+data Conn = Conn {
+   connRef :: Ref
+  ,connHostname :: String
+  ,connServerName :: String
+} deriving Show
 
-instance Ord Ref where compare = on compare show
+data Reply = ErrorReply Error | MessageReply Ref Message | LogReply String
 
-newtype Hulk a = Hulk { runHulk :: ReaderT Env IO a }
-  deriving (Functor,Applicative,Monad,MonadReader Env,MonadIO)
-
-newtype IRC a = IRC { runIRC :: ReaderT Client Hulk a }
-  deriving (Functor,Applicative,Monad,MonadReader Client,MonadIO)
-
-class (MonadIO m,Monad m) => Loggable m where
-  tell :: String -> m ()
-
-liftHulk :: Hulk a -> IRC a
-liftHulk m = IRC $ ReaderT $ \_ -> m
+newtype IRC m a = IRC { 
+      runIRC :: ReaderT Conn (WriterT [Reply] (StateT Env m)) a
+  }
+  deriving (Monad
+           ,Functor
+           ,MonadWriter [Reply]
+           ,MonadState Env
+           ,MonadReader Conn)
