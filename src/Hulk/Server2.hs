@@ -65,8 +65,9 @@ handleUser user realname = do
 
 -- | Handle the USER message.
 handleNick :: Monad m => String -> IRC m ()
-handleNick user = do
-  modifyUnregistered
+handleNick nick = do
+  modifyUnregistered $ \u -> u { unregUserNick = Just nick }
+  clientReply "NICK" [nick]
 
 handlePing = undefined
 handleQuit = undefined
