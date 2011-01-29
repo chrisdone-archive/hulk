@@ -47,7 +47,7 @@ handleClient handle env conn = do
 
 -- | Make an internal IRC event to give to the client handler.
 makeLine :: Event -> [String] -> String
-makeLine event params = (++"\r\n") $ encode $
+makeLine event params = (++"\r") $ encode $
   Message { msg_prefix = Nothing
           , msg_command = show event
           , msg_params = params }
