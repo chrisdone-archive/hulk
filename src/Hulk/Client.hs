@@ -52,9 +52,9 @@ handleMsgSafeToLog line safeToLog = do
     (USER,[user,_,_,realname]) -> asUnregistered $ handleUser user realname
     (NICK,[nick])   -> handleNick nick
     (PING,[param])  -> handlePing param
-    (QUIT,[msg])    -> handleQuit msg
+    (QUIT,[msg])    -> handleQuit RequestedQuit msg
     (TELL,[to,msg]) -> handleTell to msg
-    (DISCONNECT,[msg]) -> handleQuit msg
+    (DISCONNECT,[msg]) -> handleQuit SocketQuit msg
     mustBeReg'd -> handleMsgReg'd line mustBeReg'd
 
 -- | Handle messages that can only be used when registered.
@@ -91,14 +91,15 @@ handleUser user realname = do
 -- | Handle the USER message.
 handleNick :: Monad m => String -> IRC m ()
 handleNick nick =
-  ifUniqueValidNick nick $ do
-    ref <- asks connRef
-    modifyNicks $ M.insert nick ref
-    modifyUnregistered $ \u -> u { unregUserNick = Just nick }
-    tryRegister
-    asRegistered $ do
-      modifyRegistered $ \u -> u { regUserNick = nick }
-      thisClientReply "NICK" [nick]
+  withValidNick nick $ \nick ->
+    ifUniqueNick nick $ do
+      ref <- asks connRef
+      modifyNicks $ M.insert nick ref
+      modifyUnregistered $ \u -> u { unregUserNick = Just nick }
+      tryRegister
+      asRegistered $ do
+        modifyRegistered $ \u -> u { regUserNick = nick }
+        thisClientReply "NICK" [unNick nick]
 
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
@@ -107,11 +108,16 @@ handlePing p = do
   thisServerReply "PONG" [hostname,p]
 
 -- | Handle the QUIT message.
-handleQuit :: Monad m => String -> IRC m ()
-handleQuit msg = do
+handleQuit :: Monad m => QuitType -> String -> IRC m ()
+handleQuit quitType msg = do
  (myChannels >>=) $ mapM_ $ \Channel{..} -> do
    channelReply channelName "QUIT" [msg]
+ withRegistered $ \RegUser{regUserNick=nick} -> do
+   modifyNicks $ M.delete nick
+ ref <- asks connRef
+ modifyClients $ M.delete ref
  notice "Bye bye!"
+ when (quitType == RequestedQuit) $ tell [Close]
 
 -- | Handle the TELL message.
 handleTell :: Monad m => String -> String -> IRC m ()
@@ -150,7 +156,7 @@ handleNotice name msg = sendMsgTo "NOTICE" name msg
 sendMsgTo :: Monad m => String -> String -> String -> IRC m ()
 sendMsgTo typ name msg =
   if validChannel name
-     then channelReply name typ [msg]
+     then withValidChanName name $ \name -> channelReply name typ [msg]
      else userReply name typ [msg]
 
 -- Channel functions
@@ -162,22 +168,23 @@ myChannels = do
   filter (elem ref . channelUsers) . map snd . M.toList <$> gets envChannels
 
 -- | Join a channel.
-joinChannel :: Monad m => String -> IRC m ()
+joinChannel :: Monad m => ChannelName -> IRC m ()
 joinChannel name = do
   ref <- asks connRef
   let addMe c = c { channelUsers = channelUsers c ++ [ref] }
   modifyChannels $ M.adjust addMe name
-  channelReply name "JOIN" [name]
+  channelReply name "JOIN" [unChanName name]
   withRegistered $ \RegUser{regUserNick=me} ->
     withChannel name $ \Channel{..} -> do
       clients <- catMaybes <$> mapM getClientByRef channelUsers
       let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
       forM_ (splitEvery 10 nicks) $ \nicks ->
-        thisServerReply "353" [me,"@",name,unwords nicks]
-      thisServerReply "366" [me,name,"End of /NAMES list."]
+        thisServerReply "353" [unNick me,"@",unChanName name
+                              ,unwords $ map unNick nicks]
+      thisServerReply "366" [unNick me,unChanName name,"End of /NAMES list."]
 
 -- | Am I in a channel?
-inChannel :: Monad m => String -> IRC m Bool
+inChannel :: Monad m => ChannelName -> IRC m Bool
 inChannel name = do
   chan <- M.lookup name <$> gets envChannels
   case chan of
@@ -185,7 +192,7 @@ inChannel name = do
     Just Channel{..} -> (`elem` channelUsers) <$> asks connRef
 
 -- | Insert a new channel.
-insertChannel :: Monad m => String -> IRC m ()
+insertChannel :: Monad m => ChannelName -> IRC m ()
 insertChannel name = modifyChannels $ M.insert name newChan where
   newChan = Channel { channelName  = name
                     , channelTopic = Nothing
@@ -193,37 +200,44 @@ insertChannel name = modifyChannels $ M.insert name newChan where
                     }
 
 -- | Modify the channel map.
-modifyChannels :: Monad m => (Map String Channel -> Map String Channel) 
+modifyChannels :: Monad m 
+               => (Map ChannelName Channel -> Map ChannelName Channel) 
                -> IRC m ()
 modifyChannels f = modify $ \e -> e { envChannels = f (envChannels e) }
 
 -- | Perform an action with an existing channel, sends error if not exists.
-withChannel :: Monad m => String -> (Channel -> IRC m ()) -> IRC m ()
+withChannel :: Monad m => ChannelName -> (Channel -> IRC m ()) -> IRC m ()
 withChannel name m = do
   chan <- M.lookup name <$> gets envChannels
   case chan of
     Nothing -> errorReply "Channel does not exist."
     Just chan -> m chan
     
-withValidChanName :: Monad m => String -> (String -> IRC m ()) -> IRC m ()
+withValidChanName :: Monad m => String -> (ChannelName -> IRC m ()) 
+                  -> IRC m ()
 withValidChanName name m 
-    | validChannel name = m name
+    | validChannel name = m $ ChannelName name
     | otherwise         = errorReply $ "Invalid channel name: " ++ name
 
 -- Client/user access functions
 
-modifyNicks :: Monad m => (Map String Ref -> Map String Ref) -> IRC m ()
+modifyNicks :: Monad m => (Map Nick Ref -> Map Nick Ref) -> IRC m ()
 modifyNicks f = modify $ \env -> env { envNicks = f (envNicks env) }
 
+-- | With a valid nickname, perform an action.
+withValidNick :: Monad m => String -> (Nick -> IRC m ()) -> IRC m ()
+withValidNick nick m
+    | validNick nick = m (Nick nick)
+    | otherwise      = errorReply $ "Invalid nick format: " ++ nick
+
 -- | Perform an action if a nickname is unique, otherwise send error.
-ifUniqueValidNick :: Monad m => String -> IRC m () -> IRC m ()
-ifUniqueValidNick nick m = do
+ifUniqueNick :: Monad m => Nick -> IRC m () -> IRC m ()
+ifUniqueNick nick m = do
   clients <- gets envClients
   client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
   case client of
-    Nothing | validNick nick -> m
-            | otherwise      -> errorReply $ "Invalid nick format: " ++ nick
-    Just{}  -> errorReply $ "That nick is already in use: " ++ nick
+    Nothing -> m
+    Just{}  -> errorReply $ "That nick is already in use: " ++ unNick nick
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
 tryRegister :: Monad m => IRC m ()
@@ -245,25 +259,26 @@ tryRegister =
 sendWelcome :: Monad m => IRC m ()
 sendWelcome = do
   withRegistered $ \RegUser{..} -> do
-    thisServerReply "001" [regUserNick,"Welcome."]
+    thisServerReply "001" [unNick regUserNick,"Welcome."]
     
 sendMotd :: Monad m => IRC m ()
 sendMotd = do
   withRegistered $ \RegUser{regUserNick=nick} -> do
-    thisServerReply "375" [nick,"MOTD"]
+    thisServerReply "375" [unNick nick,"MOTD"]
     -- TODO: MOTD.
-    thisServerReply "376" [nick,"/MOTD."]
+    thisServerReply "376" [unNick nick,"/MOTD."]
 
 -- | Send a client reply to a user.
 userReply :: Monad m => String -> String -> [String] -> IRC m ()
-userReply nick typ ps = do
-  clients <- gets envClients
-  client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
-  case client of
-    Nothing -> errorReply "Unknown nick."
-    Just Client{..} 
-        | isRegistered clientUser -> clientReply clientRef typ ps
-        | otherwise -> errorReply "Unknown user."
+userReply nick typ ps = 
+  withValidNick nick $ \nick -> do
+    clients <- gets envClients
+    client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
+    case client of
+      Nothing -> errorReply "Unknown nick."
+      Just Client{..} 
+          | isRegistered clientUser -> clientReply clientRef typ ps
+          | otherwise -> errorReply "Unknown user."
 
 -- | Maybe get a registered user from a client.
 clientRegUser :: Client -> Maybe RegUser
@@ -348,6 +363,10 @@ getClient = do
     Just client -> return $ client
     Nothing -> makeNewClient
     
+-- | Modify the clients table.
+modifyClients :: Monad m => (Map Ref Client -> Map Ref Client) -> IRC m ()
+modifyClients f = modify $ \env -> env { envClients = f (envClients env) }
+
 -- | Make a current client based on the current connection.
 makeNewClient :: Monad m => IRC m Client
 makeNewClient = do
@@ -355,8 +374,7 @@ makeNewClient = do
   let client = Client { clientRef = connRef conn
                       , clientHostname = connHostname conn
                       , clientUser = newUnregisteredUser }
-      addMe = M.insert (connRef conn) client
-  modify $ \env -> env { envClients = addMe (envClients env) }
+  modifyClients $ M.insert (connRef conn) client
   return client
 
 -- | Make a new unregistered user.
@@ -371,7 +389,7 @@ newUnregisteredUser = Unregistered $ UnregUser {
 -- Channel replies
 
 -- | Send a client reply to everyone in a channel.
-channelReply :: Monad m => String -> String -> [String] -> IRC m ()
+channelReply :: Monad m => ChannelName -> String -> [String] -> IRC m ()
 channelReply name cmd params = do
   withChannel name $ \Channel{..} -> do
     ref <- asks connRef
@@ -399,7 +417,9 @@ clientReply ref typ params = do
 newClientMsg :: Monad m => Client -> RegUser -> String -> [String] 
              -> IRC m Message
 newClientMsg Client{..} RegUser{..} cmd ps = do
-  let nickName = NickName regUserUser (Just regUserNick) (Just clientHostname)
+  let nickName = NickName regUserUser
+                          (Just $ unNick regUserNick)
+                          (Just clientHostname)
   return $ Message {
     msg_prefix = Just $ nickName
    ,msg_command = cmd

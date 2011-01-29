@@ -1,9 +1,11 @@
+{-# OPTIONS -Wall -fno-warn-name-shadowing #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Hulk.Types where
 
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
+import Data.Char
 import Data.Function
 import Data.Map             (Map)
 import Network
@@ -33,12 +35,26 @@ data Error = Error String
 
 data Env = Env {
    envClients :: Map Ref Client
-  ,envNicks :: Map String Ref
-  ,envChannels :: Map String Channel
+  ,envNicks :: Map Nick Ref
+  ,envChannels :: Map ChannelName Channel
 }
 
+newtype Nick = Nick { unNick :: String } deriving Show
+
+instance Ord Nick where
+  compare = on compare (map toLower . unNick)
+instance Eq Nick where
+  (==) = on (==) (map toLower . unNick)
+
+newtype ChannelName = ChannelName { unChanName :: String } deriving Show
+  
+instance Ord ChannelName where
+  compare = on compare (map toLower . unChanName)
+instance Eq ChannelName where
+  (==) = on (==) (map toLower . unChanName)
+
 data Channel = Channel {
-      channelName :: String
+      channelName :: ChannelName
     , channelTopic :: Maybe String
     , channelUsers :: [Ref]
 } deriving Show
@@ -48,14 +64,14 @@ data User = Unregistered UnregUser | Registered RegUser
 
 data UnregUser = UnregUser {
    unregUserName :: Maybe String
-  ,unregUserNick :: Maybe String
+  ,unregUserNick :: Maybe Nick
   ,unregUserUser :: Maybe String
   ,unregUserPass :: Maybe String
 } deriving Show
 
 data RegUser = RegUser {
    regUserName :: String
-  ,regUserNick :: String
+  ,regUserNick :: Nick
   ,regUserUser :: String
   ,regUserPass :: String
 } deriving Show
@@ -86,3 +102,5 @@ newtype IRC m a = IRC {
 data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
            | NOTICE | CONNECT | DISCONNECT | NOTHING
   deriving (Read,Show)
+
+data QuitType = RequestedQuit | SocketQuit deriving Eq
