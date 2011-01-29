@@ -457,7 +457,7 @@ newClientMsg Client{..} RegUser{..} cmd ps = do
 
 -- | Send a message reply.
 notice :: Monad m => String -> IRC m ()
-notice msg = thisServerReply "NOTICE" [msg]
+notice msg = thisServerReply "NOTICE" ["*",msg]
 
 -- | Send a server reply of the given type with the given params.
 thisServerReply :: Monad m => String -> [String] -> IRC m ()
