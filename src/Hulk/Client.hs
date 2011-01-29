@@ -348,8 +348,9 @@ newUnregisteredUser = Unregistered $ UnregUser {
 channelReply :: Monad m => String -> String -> [String] -> IRC m ()
 channelReply name cmd params = do
   withChannel name $ \Channel{..} -> do
-    forM_ channelUsers $ \ref -> do
-      clientReply ref cmd params
+    ref <- asks connRef
+    forM_ channelUsers $ \theirRef -> do
+      unless (ref == theirRef) $ clientReply theirRef cmd params
 
 -- Client replies
 
