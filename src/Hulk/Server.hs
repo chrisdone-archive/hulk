@@ -24,6 +24,7 @@ start config = withSocketsDo $ do
                        , envChannels = M.empty }
   forever $ do
     (handle,host,_port) <- accept listenSock
+    hSetNewlineMode handle $ NewlineMode CRLF LF
     hSetBuffering handle NoBuffering
     let conn = Conn { connRef = newRef handle
                     , connHostname = host
