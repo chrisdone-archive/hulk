@@ -88,7 +88,6 @@ handleTell name msg = sendMsgTo "PRIVMSG" name msg
 -- | Handle the JOIN message.
 handleJoin :: Monad m => String -> IRC m ()
 handleJoin chans = do
-  ref <- asks connRef
   let names = splitWhen (==',') chans
   forM_ names $ flip withValidChanName $ \name -> do
       exists <- M.member name <$> gets envChannels
@@ -103,7 +102,7 @@ handlePart name msg =
     ref <- asks connRef
     let remMe c = c { channelUsers = filter (==ref) (channelUsers c) }
     modifyChannels $ M.adjust remMe name
-    channelReply name "PART" [name]
+    channelReply name "PART" [msg]
 
 -- | Handle the PRIVMSG message.
 handlePrivmsg :: Monad m => String -> String -> IRC m ()
