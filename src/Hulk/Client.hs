@@ -25,7 +25,7 @@ import           Hulk.Types
 handleLine :: Monad m => Env -> Conn -> String -> m ([Reply],Env)
 handleLine env conn line = runClient env conn $
   case decode line of
-    Just msg -> handleMsg line msg
+    Just Message{..} -> handleMsg line (readEventType msg_command,msg_params)
     Nothing  -> errorReply $ "Unable to parse " ++ show line
 
 -- | Run the client monad.    
@@ -37,29 +37,36 @@ runClient env conn m = do
         runIRC m
 
 -- | Handle an incoming message.
-handleMsg :: Monad m => String -> Message -> IRC m ()
-handleMsg line Message{..} =
-  case (readEventType msg_command,msg_params) of
+handleMsg :: Monad m => String -> (Event,[String]) -> IRC m ()
+handleMsg line msg =
+  case msg of
     (NOTHING,_) -> return ()
     (PASS,[pass]) -> asUnregistered $ handlePass pass
-    safeToLog -> do
-      incoming line
-      case safeToLog of
-        (USER,[user,_,_,realname]) -> 
-            asUnregistered $ handleUser user realname
-        (NICK,[nick])   -> handleNick nick
-        (PING,[param])  -> handlePing param
-        (QUIT,[msg])    -> handleQuit msg
-        (TELL,[to,msg]) -> handleTell to msg
-        mustBeReg'd -> do
-          asRegistered $
-           case mustBeReg'd of
-             (JOIN,(name:_))    -> handleJoin name
-             (PART,[chan,msg])  -> handlePart chan msg
-             (PRIVMSG,[to,msg]) -> handlePrivmsg to msg
-             (NOTICE,[to,msg])  -> handleNotice to msg
-             _ -> errorReply $ "Invalid or unknown message type, or not" ++ 
-                               " enough parameters: " ++ msg_command
+    safeToLog -> handleMsgSafeToLog line safeToLog
+    
+-- | Handle messages that are safe to log.
+handleMsgSafeToLog :: Monad m => String -> (Event,[String]) -> IRC m ()
+handleMsgSafeToLog line safeToLog = do
+  incoming line
+  case safeToLog of
+    (USER,[user,_,_,realname]) -> asUnregistered $ handleUser user realname
+    (NICK,[nick])   -> handleNick nick
+    (PING,[param])  -> handlePing param
+    (QUIT,[msg])    -> handleQuit msg
+    (TELL,[to,msg]) -> handleTell to msg
+    mustBeReg'd -> handleMsgReg'd line mustBeReg'd
+
+-- | Handle messages that can only be used when registered.
+handleMsgReg'd :: Monad m => String -> (Event,[String]) -> IRC m ()
+handleMsgReg'd _line mustBeReg'd =
+  asRegistered $
+   case mustBeReg'd of
+     (JOIN,(name:_))    -> handleJoin name
+     (PART,[chan,msg])  -> handlePart chan msg
+     (PRIVMSG,[to,msg]) -> handlePrivmsg to msg
+     (NOTICE,[to,msg])  -> handleNotice to msg
+     _ -> errorReply $ "Invalid or unknown message type, or not" ++ 
+                       " enough parameters: " ++ show (fst mustBeReg'd)
 
 -- Message handlers
 
