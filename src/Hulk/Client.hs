@@ -425,8 +425,8 @@ clientReply ref typ params = do
 newClientMsg :: Monad m => Client -> RegUser -> String -> [String] 
              -> IRC m Message
 newClientMsg Client{..} RegUser{..} cmd ps = do
-  let nickName = NickName (Just $ unNick regUserNick)
-                          regUserUser
+  let nickName = NickName (unNick regUserNick)
+                          (Just regUserUser)
                           (Just clientHostname)
   return $ Message {
     msg_prefix = Just $ nickName
