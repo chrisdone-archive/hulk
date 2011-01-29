@@ -60,6 +60,18 @@ handleNotice = undefined
 
 -- Client/user access functions
 
+modifyUnregistered :: Monad m => (UnregUser -> UnregUser) -> IRC m ()
+modifyUnregistered f = do
+  modifyUser $ \user -> 
+      case user of
+        Unregistered user -> Unregistered (f user)
+        u -> u
+
+modifyUser :: Monad m => (User -> User) -> IRC m ()
+modifyUser f = do
+  let modMe = undefined
+  modify $ \env -> env { envClients = modMe (envClients env) }
+
 -- | Only perform command if the client is registered.
 asRegistered :: Monad m => IRC m () -> IRC m ()
 asRegistered m = do
