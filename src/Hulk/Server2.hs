@@ -101,7 +101,13 @@ handlePart name msg =
     modifyChannels $ M.adjust remMe name
     channelReply name "PART" [name]
 
-handlePrivmsg = undefined
+-- | Handle the PRIVMSG message.
+handlePrivmsg :: Monad m => String -> String -> IRC m ()
+handlePrivmsg name msg =
+  if validChannel name
+     then channelReply name "PRIVMSG" [msg]
+     else userReply name "PRIVMSG" [msg]
+
 handleNotice = undefined
 
 -- Channel functions
@@ -156,6 +162,17 @@ withValidChanName name m
     | otherwise         = errorReply $ "Invalid channel name: " ++ name
 
 -- Client/user access functions
+
+-- | Send a client reply to a user.
+userReply :: Monad m => String -> String -> [String] -> IRC m ()
+userReply nick typ ps = do
+  clients <- gets envClients
+  client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
+  case client of
+    Nothing -> errorReply "Unknown nick."
+    Just Client{..} 
+        | isRegistered clientUser -> clientReply clientRef typ ps
+        | otherwise -> errorReply "Unknown user."
 
 -- | Maybe get a registered user from a client.
 clientRegUser :: Client -> Maybe RegUser
