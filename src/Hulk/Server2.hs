@@ -89,8 +89,10 @@ modifyUnregistered f = do
 -- | Modify the current user.
 modifyUser :: Monad m => (User -> User) -> IRC m ()
 modifyUser f = do
-  let modMe = undefined
-  modify $ \env -> env { envClients = modMe (envClients env) }
+  ref <- clientRef <$> getClient
+  let modUser c = c { clientUser = f (clientUser c) }
+      modClient = M.adjust modUser ref
+  modify $ \env -> env { envClients = modClient (envClients env) }
 
 -- | Only perform command if the client is registered.
 asRegistered :: Monad m => IRC m () -> IRC m ()
