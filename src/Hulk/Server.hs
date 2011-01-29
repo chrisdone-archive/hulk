@@ -5,11 +5,11 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.Fix
-import qualified Data.Map            as M
+import qualified Data.Map                 as M
 import           Network
 import           Network.IRC
 import           System.IO
-import           System.IO.UTF8      as UTF8
+import           System.IO.UTF8           as UTF8
 
 import           Hulk.Types
 import           Hulk.Client
@@ -24,7 +24,6 @@ start config = withSocketsDo $ do
                        , envChannels = M.empty }
   forever $ do
     (handle,host,_port) <- accept listenSock
-    hSetNewlineMode handle $ NewlineMode CRLF LF
     hSetBuffering handle NoBuffering
     let conn = Conn { connRef = newRef handle
                     , connHostname = host
@@ -38,10 +37,13 @@ handleClient :: Handle -> MVar Env -> Conn -> IO ()
 handleClient handle env conn = do
   fix $ \loop -> do
     line <- catch (Right <$> UTF8.hGetLine handle) (return . Left)
-    case line of
-      Right line -> do runClientHandler env handle conn (line++"\n"); loop
-      Left _err -> runClientHandler env handle conn $ 
-                   makeLine DISCONNECT ["Connection lost."]
+    case filter (not.newline) <$> line of
+      Right []   -> loop
+      Right line -> do runClientHandler env handle conn (line++"\r"); loop
+      Left _err  -> runClientHandler env handle conn $ 
+                      makeLine DISCONNECT ["Connection lost."]
+
+  where newline c = c=='\n' || c=='\r'
 
 -- | Make an internal IRC event to give to the client handler.
 makeLine :: Event -> [String] -> String
