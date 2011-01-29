@@ -11,3 +11,8 @@ fork m = do
   env <- ask
   io $ forkIO $ do _ <- runReaderT (runHulk m) env
                    return ()
+
+withVar :: MVar a -> (a -> Hulk b) -> Hulk b
+withVar var m = do
+  env <- ask
+  io $ withMVar var $ \var -> runReaderT (runHulk (m var)) env
