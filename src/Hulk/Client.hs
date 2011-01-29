@@ -56,6 +56,7 @@ handlePass :: Monad m => String -> IRC m ()
 handlePass pass = do
   modifyUnregistered $ \u -> u { unregUserPass = Just pass }
   notice "Received password."
+  tryRegister
 
 -- | Handle the USER message.
 handleUser :: Monad m => String -> String -> IRC m ()
@@ -64,6 +65,7 @@ handleUser user realname = do
      then do modifyUnregistered $ \u -> u { unregUserUser = Just user
                                           , unregUserName = Just realname }
              notice "Recieved user details."
+             tryRegister
      else errorReply "Invalid user format."
 
 -- | Handle the USER message.
@@ -71,6 +73,7 @@ handleNick :: Monad m => String -> IRC m ()
 handleNick nick = do
   modifyUnregistered $ \u -> u { unregUserNick = Just nick }
   thisClientReply "NICK" [nick]
+  tryRegister
 
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
@@ -184,6 +187,20 @@ withValidChanName name m
 
 -- Client/user access functions
 
+-- | Try to register the user with the USER/NICK/PASS that have been given.
+tryRegister :: Monad m => IRC m ()
+tryRegister =
+  withUnegistered $ \UnregUser{..} -> do
+    let details = (,,,) <$> unregUserName
+                        <*> unregUserNick
+                        <*> unregUserUser
+                        <*> unregUserPass
+    case details of
+      Nothing -> return ()
+      Just (name,nick,user,pass) -> 
+          modifyUser $ \_ ->
+            Registered $ RegUser name nick user pass
+
 -- | Send a client reply to a user.
 userReply :: Monad m => String -> String -> [String] -> IRC m ()
 userReply nick typ ps = do
@@ -230,6 +247,14 @@ withRegistered m = do
   user <- getUser
   case user of
     Registered user -> m user
+    _ -> return ()
+
+-- | Perform command with a registered user.
+withUnegistered :: Monad m => (UnregUser -> IRC m ()) -> IRC m ()
+withUnegistered m = do
+  user <- getUser
+  case user of
+    Unregistered user -> m user
     _ -> return ()
 
 -- | Only perform command if the client is registered.
