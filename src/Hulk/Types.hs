@@ -1,5 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Hulk.Types2 where
+module Hulk.Types where
 
 import Control.Monad.State
 import Control.Monad.Writer
