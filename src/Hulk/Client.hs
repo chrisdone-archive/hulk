@@ -90,10 +90,15 @@ handleUser user realname = do
 
 -- | Handle the USER message.
 handleNick :: Monad m => String -> IRC m ()
-handleNick nick = do
-  modifyUnregistered $ \u -> u { unregUserNick = Just nick }
-  thisClientReply "NICK" [nick]
-  tryRegister
+handleNick nick =
+  ifUniqueValidNick nick $ do
+    ref <- asks connRef
+    modifyNicks $ M.insert nick ref
+    modifyUnregistered $ \u -> u { unregUserNick = Just nick }
+    tryRegister
+    asRegistered $ do
+      modifyRegistered $ \u -> u { regUserNick = nick }
+      thisClientReply "NICK" [nick]
 
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
@@ -207,6 +212,19 @@ withValidChanName name m
 
 -- Client/user access functions
 
+modifyNicks :: Monad m => (Map String Ref -> Map String Ref) -> IRC m ()
+modifyNicks f = modify $ \env -> env { envNicks = f (envNicks env) }
+
+-- | Perform an action if a nickname is unique, otherwise send error.
+ifUniqueValidNick :: Monad m => String -> IRC m () -> IRC m ()
+ifUniqueValidNick nick m = do
+  clients <- gets envClients
+  client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
+  case client of
+    Nothing | validNick nick -> m
+            | otherwise      -> errorReply $ "Invalid nick format: " ++ nick
+    Just{}  -> errorReply $ "That nick is already in use: " ++ nick
+
 -- | Try to register the user with the USER/NICK/PASS that have been given.
 tryRegister :: Monad m => IRC m ()
 tryRegister =
@@ -260,6 +278,14 @@ modifyUnregistered f = do
   modifyUser $ \user -> 
       case user of
         Unregistered user -> Unregistered (f user)
+        u -> u
+
+-- | Modify the current user if registered.
+modifyRegistered :: Monad m => (RegUser -> RegUser) -> IRC m ()
+modifyRegistered f = do
+  modifyUser $ \user -> 
+      case user of
+        Registered user -> Registered (f user)
         u -> u
 
 -- | Modify the current user.
