@@ -331,7 +331,7 @@ clientReply ref typ params = do
   withRegistered $ \user -> do
     client <- getClient
     msg <- newClientMsg client user typ params
-    tell . return . MessageReply ref $ msg
+    reply ref msg
 
 -- | Make a new IRC message from the current client.
 newClientMsg :: Monad m => Client -> RegUser -> String -> [String] 
@@ -360,7 +360,7 @@ thisServerReply typ params = do
 serverReply :: Monad m => Ref -> String -> [String] -> IRC m ()
 serverReply ref typ params = do
   msg <- newServerMsg typ params
-  tell . return . MessageReply ref $ msg
+  reply ref msg
 
 -- | Make a new IRC message from the server.
 newServerMsg :: Monad m => String -> [String] -> IRC m Message
@@ -380,7 +380,9 @@ errorReply = tell . return . ErrorReply . Error
 
 -- | Send a message reply.
 reply :: Monad m => Ref -> Message -> IRC m ()
-reply ref = tell . return . MessageReply ref
+reply ref msg = do
+  outgoing $ encode msg
+  tell . return $ MessageReply ref msg
 
 -- | Log an incoming line.
 incoming :: Monad m => String -> IRC m ()
