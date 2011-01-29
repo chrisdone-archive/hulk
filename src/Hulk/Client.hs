@@ -403,7 +403,7 @@ newServerMsg cmd ps = do
 
 -- | Send an error reply.
 errorReply :: Monad m => String -> IRC m ()
-errorReply = tell . return . ErrorReply . Error
+errorReply = notice . ("ERROR: " ++)
 
 -- | Send a message reply.
 reply :: Monad m => Ref -> Message -> IRC m ()
