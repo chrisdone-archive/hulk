@@ -175,7 +175,7 @@ sendMsgTo typ name msg =
   if validChannel name
      then withValidChanName name $ \name -> 
             channelReply name typ [unChanName name,msg] ExcludeMe
-     else userReply name typ [msg]
+     else userReply name typ [name,msg]
 
 -- Channel functions
 
