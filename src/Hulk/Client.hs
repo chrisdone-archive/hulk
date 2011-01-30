@@ -202,7 +202,7 @@ sendNamesList name = do
       let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
       forM_ (splitEvery 10 nicks) $ \nicks ->
         thisServerReply "353" [unNick me,"@",unChanName name
-                              ,unwords $ map unNick nicks]
+                              ,unwords $ map (('@':).unNick) nicks]
       thisServerReply "366" [unNick me,unChanName name,"End of /NAMES list."]
 
 -- | Am I in a channel?
