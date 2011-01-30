@@ -41,7 +41,7 @@ runClient env conn m = do
 handleMsg :: MonadProvider m => String -> (Event,[String]) -> IRC m ()
 handleMsg line msg =
   case msg of
-    (NOTHING,_) -> return ()
+    (NOTHING,_) -> invalidMessage line
     (PASS,[pass]) -> asUnregistered $ handlePass pass
     safeToLog -> handleMsgSafeToLog line safeToLog
     
@@ -62,15 +62,21 @@ handleMsgSafeToLog line safeToLog = do
 
 -- | Handle messages that can only be used when registered.
 handleMsgReg'd :: Monad m => String -> (Event,[String]) -> IRC m ()
-handleMsgReg'd _line mustBeReg'd =
+handleMsgReg'd line mustBeReg'd =
   asRegistered $
    case mustBeReg'd of
      (JOIN,(name:_))    -> handleJoin name
      (PART,[chan,msg])  -> handlePart chan msg
      (PRIVMSG,[to,msg]) -> handlePrivmsg to msg
      (NOTICE,[to,msg])  -> handleNotice to msg
-     _ -> errorReply $ "Invalid or unknown message type, or not" ++ 
-                       " enough parameters: " ++ show (fst mustBeReg'd)
+     _                  -> invalidMessage line
+
+-- | Log an invalid message.
+invalidMessage :: Monad m => String -> IRC m ()
+invalidMessage line = do
+    incoming line
+    errorReply $ "Invalid or unknown message type, or not" ++ 
+                 " enough parameters: " ++ show line
 
 -- Message handlers
 
@@ -492,7 +498,9 @@ newServerMsg cmd ps = do
 
 -- | Send an error reply.
 errorReply :: Monad m => String -> IRC m ()
-errorReply = notice . ("ERROR: " ++)
+errorReply m = do
+  notice $ "ERROR: " ++ m
+  log $ "ERROR: " ++ m
 
 -- | Send a message reply.
 reply :: Monad m => Ref -> Message -> IRC m ()
