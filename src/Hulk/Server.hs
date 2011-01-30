@@ -12,13 +12,49 @@ import           Network.IRC
 import           System.IO
 import           System.IO.UTF8       as UTF8
 
-import           Hulk.Client
 import           Hulk.Providers ()
 import           Hulk.Types
+
+
+-- hs-plugins stuff
+import System.Plugins
+import StringProcAPI
+import Control.Monad.Reader
+
+import Hulk.Types
+import qualified Data.Map as M
+--
+
+-- hs-plugins stuff
+source = "StringProcPlugin.hs"
+stub   = "Plugin.stub"
+symbol = "resource"
+--
+
+firstBuild = do
+  s <- makeWith source stub []
+  case s of
+    MakeSuccess _ obj -> do
+      ls <- load obj ["."] [] symbol
+      case ls of LoadSuccess m v -> return $ Right (m,v)
+                 LoadFailure err -> return $ Left "load failed"
+    MakeFailure e -> return $ Left $ show e
+    
+rebuild o@(m,plugin) = do
+  s  <- makeWith source stub []   -- maybe recompile the source
+  case s of
+    MakeSuccess ReComp o -> do 
+      ls <- reload m symbol
+      case ls of LoadSuccess m' v' -> return $ Right (m',v')
+                 LoadFailure err   -> return $ Left "reload failed"
+    MakeSuccess NotReq _ -> return $ Right o
+    MakeFailure e -> return $ Left $ show e
 
 -- | Start an IRC server with the given configuration.
 start :: Config -> IO ()
 start config = withSocketsDo $ do
+  o <- firstBuild
+  o <- case o of Left e -> error e; Right x -> return x
   hSetBuffering stdout LineBuffering
   listenSock <- listenOn $ PortNumber (configListen config)
   envar <- newMVar Env { envClients = M.empty
@@ -31,13 +67,14 @@ start config = withSocketsDo $ do
                     , connHostname = host
                     , connServerName = configHostname config
                     }
-    _ <- forkIO $ handleClient config handle envar conn
+    _ <- forkIO $ handleClient o config handle envar conn
     return ()
 
 -- | Handle a client connection.
-handleClient :: Config -> Handle -> MVar Env -> Conn -> IO ()
-handleClient config handle env conn = do
-  let runHandle = runClientHandler config env handle conn
+handleClient :: (Module,Handler) ->
+                Config -> Handle -> MVar Env -> Conn -> IO ()
+handleClient o config handle env conn = do
+  let runHandle = runClientHandler o config env handle conn
   runHandle $ makeLine CONNECT []
   fix $ \loop -> do
     line <- catch (Right <$> UTF8.hGetLine handle) (return . Left)
@@ -56,12 +93,19 @@ makeLine event params = (++"\r") $ encode $
           , msg_params = params }
 
 -- | Handle a received line from the client.
-runClientHandler :: Config -> MVar Env -> Handle -> Conn -> String -> IO ()
-runClientHandler config env handle conn line = do
+runClientHandler :: (Module,Handler) ->
+                    Config -> MVar Env -> Handle -> Conn -> String -> IO ()
+runClientHandler o config env handle conn line = do
   modifyMVar_ env $ \env -> do
-    (replies,env) <- runReaderT (runHulkIO $ handleLine env conn line) config
-    mapM_ (handleReplies handle) replies
-    return env
+    to <- rebuild o
+    case to of
+      Left e -> do logLine $ "RELOAD ERROR: " ++ e
+                   return env
+      Right o@(_,handleLine) -> do
+        (replies,env) <- runReaderT (runHulkIO $ handleLine env conn line) 
+                                    config
+        mapM_ (handleReplies handle) replies
+        return env
 
 -- | Act on replies from the client.
 handleReplies :: Handle -> Reply -> IO ()

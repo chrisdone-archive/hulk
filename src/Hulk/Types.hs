@@ -38,7 +38,7 @@ data Env = Env {
    envClients :: Map Ref Client
   ,envNicks :: Map Nick Ref
   ,envChannels :: Map ChannelName Channel
-}
+} deriving Show
 
 newtype Nick = Nick { unNick :: String } deriving Show
 
@@ -89,7 +89,7 @@ data Conn = Conn {
   ,connServerName :: String
 } deriving Show
 
-data Reply = MessageReply Ref Message | LogReply String | Close
+data Reply = MessageReply Ref Message | LogReply String | Close deriving Show
 
 newtype IRC m a = IRC { 
     runIRC :: ReaderT Conn (WriterT [Reply] (StateT Env m)) a

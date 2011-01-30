@@ -1,0 +1,6 @@
+module StringProcPlugin ( resource ) where
+
+import StringProcAPI
+
+resource :: Interface
+resource = plugin
