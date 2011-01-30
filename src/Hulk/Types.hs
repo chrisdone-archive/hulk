@@ -1,7 +1,8 @@
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, DeriveDataTypeable #-}
 module Hulk.Types where
 
+import Data.Typeable
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
@@ -38,7 +39,7 @@ data Env = Env {
    envClients :: Map Ref Client
   ,envNicks :: Map Nick Ref
   ,envChannels :: Map ChannelName Channel
-}
+} deriving (Typeable)
 
 newtype Nick = Nick { unNick :: String } deriving Show
 
@@ -87,9 +88,10 @@ data Conn = Conn {
    connRef :: Ref
   ,connHostname :: String
   ,connServerName :: String
-} deriving Show
+} deriving (Typeable,Show)
 
 data Reply = MessageReply Ref Message | LogReply String | Close
+  deriving Typeable
 
 newtype IRC m a = IRC { 
     runIRC :: ReaderT Conn (WriterT [Reply] (StateT Env m)) a
@@ -115,7 +117,7 @@ class Monad m => MonadProvider m where
   providePasswords :: m String
 
 newtype HulkIO a = HulkIO { runHulkIO :: ReaderT Config IO a }
- deriving (Monad,MonadReader Config,Functor,MonadIO)
+ deriving (Monad,MonadReader Config,Functor,MonadIO,Typeable)
 
 newtype HulkP a = HulkP { runHulkPure :: Identity a }
  deriving (Monad)
@@ -126,3 +128,5 @@ instance MonadTrans IRC where
     IRC $ ReaderT $ \_ -> WriterT $ StateT $ \_ -> do
       a <- m
       return ((a,[]),s)
+
+type Handler = Env -> Conn -> String -> HulkIO ([Reply],Env)

@@ -5,20 +5,25 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.Fix
+import           Control.Monad.IO
 import           Control.Monad.Reader
-import qualified Data.Map             as M
+import qualified Data.Map                     as M
+import           Language.Haskell.Interpreter
 import           Network
 import           Network.IRC
 import           System.IO
-import           System.IO.UTF8       as UTF8
+import           System.IO.UTF8               as UTF8
+import           System.IO.Watch
 
 import           Hulk.Client
-import           Hulk.Providers ()
+import           Hulk.Providers               ()
 import           Hulk.Types
 
 -- | Start an IRC server with the given configuration.
 start :: Config -> IO ()
 start config = withSocketsDo $ do
+  handler <- newMVar handleLine
+  _ <- forkIO $ runHandlerReloader handler
   hSetBuffering stdout LineBuffering
   listenSock <- listenOn $ PortNumber (configListen config)
   envar <- newMVar Env { envClients = M.empty
@@ -31,13 +36,13 @@ start config = withSocketsDo $ do
                     , connHostname = host
                     , connServerName = configHostname config
                     }
-    _ <- forkIO $ handleClient config handle envar conn
+    _ <- forkIO $ handleClient handler config handle envar conn
     return ()
 
 -- | Handle a client connection.
-handleClient :: Config -> Handle -> MVar Env -> Conn -> IO ()
-handleClient config handle env conn = do
-  let runHandle = runClientHandler config env handle conn
+handleClient :: MVar Handler -> Config -> Handle -> MVar Env -> Conn -> IO ()
+handleClient handler config handle env conn = do
+  let runHandle = runClientHandler handler config env handle conn
   runHandle $ makeLine CONNECT []
   fix $ \loop -> do
     line <- catch (Right <$> UTF8.hGetLine handle) (return . Left)
@@ -55,13 +60,43 @@ makeLine event params = (++"\r") $ encode $
           , msg_command = show event
           , msg_params = params }
 
+-- | Watch the Client module for changes. When it changes, reload it
+-- and update the client handler MVar.
+runHandlerReloader :: MVar Handler -> IO ()
+runHandlerReloader handlerVar = do
+  update <- newEmptyMVar
+  _ <- forkIO $ onModify "Hulk/Client.hs" $ putMVar update ()
+  _ <- runInterpreter $ do
+    let c = ["Hulk.Client"]
+        reload = do loadModules c; setImports $ "Prelude" : c
+        log = io . logLine
+        reloader = do
+          log "Watching for module changes ..."
+          () <- io $ takeMVar update
+          log "Module modified, reloading ..."
+          reload
+          log "Loaded. Interpreting function ..."
+          f <- interpret "handleLine" (as :: Handler)
+          log "Interpreted. Updating function ..."
+          io $ modifyMVar_ handlerVar $ const $ return f
+          log "Updated."
+          reloader
+    reload
+    f <- interpret "handleLine" (as :: Handler)
+    reloader
+  return ()
+
 -- | Handle a received line from the client.
-runClientHandler :: Config -> MVar Env -> Handle -> Conn -> String -> IO ()
-runClientHandler config env handle conn line = do
-  modifyMVar_ env $ \env -> do
-    (replies,env) <- runReaderT (runHulkIO $ handleLine env conn line) config
-    mapM_ (handleReplies handle) replies
-    return env
+runClientHandler :: MVar Handler -> Config -> MVar Env -> Handle -> Conn 
+                 -> String
+                 -> IO ()
+runClientHandler handler config env handle conn line = do
+  withMVar handler $ \handleLine ->
+    modifyMVar_ env $ \env -> do
+      (replies,env) <- flip runReaderT config $
+                         runHulkIO $ handleLine env conn line
+      mapM_ (handleReplies handle) replies
+      return env
 
 -- | Act on replies from the client.
 handleReplies :: Handle -> Reply -> IO ()
