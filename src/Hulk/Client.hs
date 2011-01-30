@@ -123,6 +123,7 @@ handleQuit :: Monad m => QuitType -> String -> IRC m ()
 handleQuit quitType msg = do
  (myChannels >>=) $ mapM_ $ \Channel{..} -> do
    channelReply channelName "QUIT" [msg] ExcludeMe
+   removeFromChan channelName
  withRegistered $ \RegUser{regUserNick=nick} -> do
    modifyNicks $ M.delete nick
  ref <- asks connRef
@@ -148,10 +149,15 @@ handleJoin chans = do
 handlePart :: Monad m => String -> String -> IRC m ()
 handlePart name msg =
   withValidChanName name $ \name -> do
-    ref <- asks connRef
-    let remMe c = c { channelUsers = filter (==ref) (channelUsers c) }
-    modifyChannels $ M.adjust remMe name
+    removeFromChan name
     channelReply name "PART" [msg] IncludeMe
+
+-- | Remove a user from a channel.
+removeFromChan :: Monad m => ChannelName -> IRC m ()
+removeFromChan name = do
+  ref <- asks connRef
+  let remMe c = c { channelUsers = filter (/=ref) (channelUsers c) }
+  modifyChannels $ M.adjust remMe name
 
 -- | Handle the PRIVMSG message.
 handlePrivmsg :: Monad m => String -> String -> IRC m ()
