@@ -237,6 +237,7 @@ withValidChanName name m
 
 -- Client/user access functions
 
+-- | Modify the nicks mapping.
 modifyNicks :: Monad m => (Map Nick Ref -> Map Nick Ref) -> IRC m ()
 modifyNicks f = modify $ \env -> env { envNicks = f (envNicks env) }
 
