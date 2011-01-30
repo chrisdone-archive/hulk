@@ -68,6 +68,7 @@ handleMsgReg'd line mustBeReg'd =
      (JOIN,(name:_))    -> handleJoin name
      (PART,[chan,msg])  -> handlePart chan msg
      (PRIVMSG,[to,msg]) -> handlePrivmsg to msg
+     (TOPIC,[chan,topic]) -> handleTopic chan topic
      (NOTICE,[to,msg])  -> handleNotice to msg
      _                  -> invalidMessage line
 
@@ -165,6 +166,14 @@ removeFromChan name = do
   let remMe c = c { channelUsers = filter (/=ref) (channelUsers c) }
   modifyChannels $ M.adjust remMe name
 
+-- | Handle the TOPIC message.
+handleTopic :: Monad m => String -> String -> IRC m ()
+handleTopic name topic =
+  withValidChanName name $ \name -> do
+    let setTopic c = c { channelTopic = Just topic }
+    modifyChannels $ M.adjust setTopic name
+    channelReply name "TOPIC" [unChanName name,topic] IncludeMe
+
 -- | Handle the PRIVMSG message.
 handlePrivmsg :: Monad m => String -> String -> IRC m ()
 handlePrivmsg name msg = sendMsgTo "PRIVMSG" name msg
@@ -199,6 +208,10 @@ joinChannel name = do
   modifyChannels $ M.adjust addMe name
   channelReply name "JOIN" [unChanName name] IncludeMe
   sendNamesList name
+  withChannel name $ \Channel{..} -> do
+    case channelTopic of
+      Just topic -> thisServerReply "TOPIC" [unChanName name,topic]
+      Nothing -> return ()
 
 sendNamesList :: Monad m => ChannelName -> IRC m ()
 sendNamesList name = do
@@ -208,7 +221,7 @@ sendNamesList name = do
       let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
       forM_ (splitEvery 10 nicks) $ \nicks ->
         thisServerReply "353" [unNick me,"@",unChanName name
-                              ,unwords $ map (('@':).unNick) nicks]
+                              ,unwords $ map unNick nicks]
       thisServerReply "366" [unNick me,unChanName name,"End of /NAMES list."]
 
 -- | Am I in a channel?
