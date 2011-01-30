@@ -116,7 +116,7 @@ handleNick nick =
 handlePing :: Monad m => String -> IRC m ()
 handlePing p = do
   hostname <- asks connServerName
-  thisServerReply "PONG" [hostname,p]
+  thisServerReply "PONGER" [hostname,p]
 
 -- | Handle the QUIT message.
 handleQuit :: Monad m => QuitType -> String -> IRC m ()

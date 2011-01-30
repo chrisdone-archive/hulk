@@ -67,13 +67,14 @@ runHandlerReloader handlerVar = do
   update <- newEmptyMVar
   _ <- forkIO $ onModify "Hulk/Client.hs" $ putMVar update ()
   _ <- runInterpreter $ do
-    let c = ["Hulk.Client"]
+    let c = ["Hulk.Providers","Hulk.Types","Hulk.Client"]
         reload = do loadModules c; setImports $ "Prelude" : c
         log = io . logLine
         reloader = do
           log "Watching for module changes ..."
           () <- io $ takeMVar update
           log "Module modified, reloading ..."
+          reset
           reload
           log "Loaded. Interpreting function ..."
           f <- interpret "handleLine" (as :: Handler)
@@ -82,9 +83,19 @@ runHandlerReloader handlerVar = do
           log "Updated."
           reloader
     reload
-    f <- interpret "handleLine" (as :: Handler)
     reloader
   return ()
+
+hintTest :: IO ()
+hintTest = do
+  e <- runInterpreter $ do liftIO $ UTF8.putStrLn "Loading."
+                           let c = ["Hulk.Providers",
+                                    "Hulk.Types","Hulk.Client"]
+                           loadModules c; setImports $ "Prelude" : c
+                           liftIO $ UTF8.putStrLn "Interpreting"
+                           f <- interpret "handleLine" (as :: Handler)
+                           liftIO $ UTF8.putStrLn "Loaded."
+  UTF8.putStrLn $ show e
 
 -- | Handle a received line from the client.
 runClientHandler :: MVar Handler -> Config -> MVar Env -> Handle -> Conn 
@@ -93,6 +104,7 @@ runClientHandler :: MVar Handler -> Config -> MVar Env -> Handle -> Conn
 runClientHandler handler config env handle conn line = do
   withMVar handler $ \handleLine ->
     modifyMVar_ env $ \env -> do
+      logLine "About to use function ..."
       (replies,env) <- flip runReaderT config $
                          runHulkIO $ handleLine env conn line
       mapM_ (handleReplies handle) replies
