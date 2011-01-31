@@ -99,25 +99,27 @@ handlePass pass = do
 -- | Handle the USER message.
 handleUser :: MonadProvider m => String -> String -> IRC m ()
 handleUser user realname = do
-  if validUser user
-     then do modifyUnregistered $ \u -> u { unregUserUser = Just user
-                                          , unregUserName = Just realname }
-             notice "Recieved user details."
-             tryRegister
-     else errorReply "Invalid user format."
+  withSentPass $
+    if validUser user
+       then do modifyUnregistered $ \u -> u { unregUserUser = Just user
+                                            , unregUserName = Just realname }
+               notice "Recieved user details."
+               tryRegister
+       else errorReply "Invalid user format."
 
 -- | Handle the USER message.
 handleNick :: MonadProvider m => String -> IRC m ()
 handleNick nick =
-  withValidNick nick $ \nick ->
-    ifUniqueNick nick $ do
-      ref <- asks connRef
-      modifyNicks $ M.insert nick ref
-      modifyUnregistered $ \u -> u { unregUserNick = Just nick }
-      tryRegister
-      asRegistered $ do
-        thisClientReply "NICK" [unNick nick]
-        modifyRegistered $ \u -> u { regUserNick = nick }
+  withSentPass $
+    withValidNick nick $ \nick ->
+      ifUniqueNick nick $ do
+        ref <- asks connRef
+        modifyNicks $ M.insert nick ref
+        modifyUnregistered $ \u -> u { unregUserNick = Just nick }
+        tryRegister
+        asRegistered $ do
+          thisClientReply "NICK" [unNick nick]
+          modifyRegistered $ \u -> u { regUserNick = nick }
 
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
@@ -374,6 +376,14 @@ withRegistered m = do
   case user of
     Registered user -> m user
     _ -> return ()
+    
+-- | With sent pass.
+withSentPass :: Monad m => IRC m () -> IRC m ()
+withSentPass m = do
+  withUnegistered $ \UnregUser{..} -> do
+    case unregUserPass of
+      Just{} -> m
+      Nothing -> return ()
 
 -- | Perform command with a registered user.
 withUnegistered :: Monad m => (UnregUser -> IRC m ()) -> IRC m ()
