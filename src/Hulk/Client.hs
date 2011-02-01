@@ -187,10 +187,11 @@ handleNotice name msg = sendMsgTo "NOTICE" name msg
 
 -- | Handle the ISON ('is on?') message.
 handleIsOn :: Monad m => [String] -> IRC m ()
-handleIsOn (catMaybes . map readNick -> nicks) = do
-  online <- catMaybes <$> mapM regUserByNick nicks
-  let nicks = map (unNick.regUserNick) online
-  unless (null nicks) $ thisServerReply "ISON" nicks
+handleIsOn (catMaybes . map readNick -> nicks) =
+  withRegistered $ \RegUser{regUserNick=nick} -> do
+    online <- catMaybes <$> mapM regUserByNick nicks
+    let nicks = unwords $ map (unNick.regUserNick) online
+    unless (null nicks) $ thisServerReply "303" [unNick nick,nicks]
 
 -- Generic message functions
 
