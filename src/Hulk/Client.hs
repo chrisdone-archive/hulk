@@ -380,6 +380,7 @@ withRegistered m = do
 -- | With sent pass.
 withSentPass :: Monad m => IRC m () -> IRC m ()
 withSentPass m = do
+  asRegistered m
   withUnegistered $ \UnregUser{..} -> do
     case unregUserPass of
       Just{} -> m
