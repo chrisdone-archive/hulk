@@ -328,24 +328,6 @@ tryRegister =
                    sendWelcome
                    sendMotd
 
--- | Send the welcome message.
-sendWelcome :: Monad m => IRC m ()
-sendWelcome = do
-  withRegistered $ \RegUser{..} -> do
-    thisServerReply RPL_WELCOME [unNick regUserNick,"Welcome."]
-
--- | Send the MOTD.    
-sendMotd :: MonadProvider m => IRC m ()
-sendMotd = do
-  withRegistered $ \RegUser{regUserNick=Nick nick} -> do
-    thisServerReply RPL_MOTDSTART [nick,"MOTD"]
-    motd <- fmap lines <$> lift provideMotd
-    let motdLine line = thisServerReply RPL_MOTD [nick,line]
-    case motd of
-      Nothing -> motdLine "None."
-      Just lines -> mapM_ motdLine lines
-    thisServerReply RPL_ENDOFMOTD [nick,"/MOTD."]
-
 -- | Send a client reply to a user.
 userReply :: Monad m => String -> RPL -> [String] -> IRC m ()
 userReply nick typ ps = 
@@ -549,6 +531,24 @@ newClientMsg Client{..} RegUser{..} cmd ps = do
   }
 
 -- Server replies
+
+-- | Send the welcome message.
+sendWelcome :: Monad m => IRC m ()
+sendWelcome = do
+  withRegistered $ \RegUser{..} -> do
+    thisServerReply RPL_WELCOME [unNick regUserNick,"Welcome."]
+
+-- | Send the MOTD.    
+sendMotd :: MonadProvider m => IRC m ()
+sendMotd = do
+  withRegistered $ \RegUser{regUserNick=Nick nick} -> do
+    thisServerReply RPL_MOTDSTART [nick,"MOTD"]
+    motd <- fmap lines <$> lift provideMotd
+    let motdLine line = thisServerReply RPL_MOTD [nick,line]
+    case motd of
+      Nothing -> motdLine "None."
+      Just lines -> mapM_ motdLine lines
+    thisServerReply RPL_ENDOFMOTD [nick,"/MOTD."]
 
 -- | Send a message reply.
 notice :: Monad m => String -> IRC m ()
