@@ -191,7 +191,7 @@ handleIsOn (catMaybes . map readNick -> nicks) =
   withRegistered $ \RegUser{regUserNick=nick} -> do
     online <- catMaybes <$> mapM regUserByNick nicks
     let nicks = unwords $ map (unNick.regUserNick) online
-    unless (null nicks) $ thisServerReply "303" [unNick nick,nicks]
+    unless (null nicks) $ thisServerReply "303" [unNick nick,nicks ++ " "]
 
 -- Generic message functions
 
