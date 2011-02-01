@@ -101,7 +101,7 @@ newtype IRC m a = IRC {
            ,MonadReader Conn)
 
 data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
-           | NOTICE | ISON | TOPIC | CONNECT | DISCONNECT | NOTHING
+           | NOTICE | ISON | WHOIS | TOPIC | CONNECT | DISCONNECT | NOTHING
   deriving (Read,Show)
 
 
@@ -118,32 +118,42 @@ data RPL = RPL_WHOISUSER
          | RPL_TOPIC
          | RPL_NAMEREPLY
          | RPL_ENDOFNAMES
-         | RPL_ERR_NICKNAMEINUSE
+         | ERR_NICKNAMEINUSE
          | RPL_WELCOME
          | RPL_MOTDSTART
          | RPL_MOTD
          | RPL_ENDOFMOTD
+         | RPL_WHOISIDLE
+         | RPL_ENDOFWHOIS
+         | RPL_WHOISCHANNELS
+         | ERR_NOSUCHNICK
+         | ERR_NOSUCHCHANNEL
   deriving Show
 
 fromRPL :: RPL -> String
-fromRPL RPL_WHOISUSER         = "311"
-fromRPL RPL_NICK              = "NICK"
-fromRPL RPL_PONG              = "PONG"
-fromRPL RPL_QUIT              = "QUIT"
-fromRPL RPL_JOIN              = "JOIN"
-fromRPL RPL_NOTICE            = "NOTICE"
-fromRPL RPL_PART              = "PART"
-fromRPL RPL_PRIVMSG           = "PRIVMSG"
-fromRPL RPL_ISON              = "303"
-fromRPL RPL_JOINS             = "JOIN"
-fromRPL RPL_TOPIC             = "TOPIC"
-fromRPL RPL_NAMEREPLY         = "353"
-fromRPL RPL_ENDOFNAMES        = "366"
-fromRPL RPL_ERR_NICKNAMEINUSE = "433"
-fromRPL RPL_WELCOME           = "001"
-fromRPL RPL_MOTDSTART         = "375"
-fromRPL RPL_MOTD              = "372"
-fromRPL RPL_ENDOFMOTD         = "376"
+fromRPL RPL_WHOISUSER     = "311"
+fromRPL RPL_NICK          = "NICK"
+fromRPL RPL_PONG          = "PONG"
+fromRPL RPL_QUIT          = "QUIT"
+fromRPL RPL_JOIN          = "JOIN"
+fromRPL RPL_NOTICE        = "NOTICE"
+fromRPL RPL_PART          = "PART"
+fromRPL RPL_PRIVMSG       = "PRIVMSG"
+fromRPL RPL_ISON          = "303"
+fromRPL RPL_JOINS         = "JOIN"
+fromRPL RPL_TOPIC         = "TOPIC"
+fromRPL RPL_NAMEREPLY     = "353"
+fromRPL RPL_ENDOFNAMES    = "366"
+fromRPL RPL_WELCOME       = "001"
+fromRPL RPL_MOTDSTART     = "375"
+fromRPL RPL_MOTD          = "372"
+fromRPL RPL_ENDOFMOTD     = "376"
+fromRPL RPL_WHOISIDLE     = "317"
+fromRPL RPL_WHOISCHANNELS = "319"
+fromRPL RPL_ENDOFWHOIS    = "318"
+fromRPL ERR_NICKNAMEINUSE = "433"
+fromRPL ERR_NOSUCHNICK    = "401"
+fromRPL ERR_NOSUCHCHANNEL = "403"
 
 data QuitType = RequestedQuit | SocketQuit deriving Eq
 

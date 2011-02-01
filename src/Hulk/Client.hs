@@ -70,6 +70,7 @@ handleMsgReg'd line mustBeReg'd =
      (PRIVMSG,[to,msg]) -> handlePrivmsg to msg
      (TOPIC,[chan,topic]) -> handleTopic chan topic
      (NOTICE,[to,msg])  -> handleNotice to msg
+     (WHOIS,[nick])     -> handleWhoIs nick
      (ISON,people)      -> handleIsOn people
      _                  -> invalidMessage line
 
@@ -185,6 +186,14 @@ handlePrivmsg name msg = sendMsgTo RPL_PRIVMSG name msg
 handleNotice :: Monad m => String -> String -> IRC m ()
 handleNotice name msg = sendMsgTo RPL_NOTICE name msg
 
+-- | Handle WHOIS message.
+handleWhoIs :: Monad m => String -> IRC m ()
+handleWhoIs nick =
+  withValidNick nick $ \nick ->
+    withRegUserByNick nick $ \RegUser{..} -> do
+--      thisServerReply RPL_WHOISUSER [unNick nick,]
+      thisServerReply RPL_ENDOFWHOIS [unNick nick,"End of WHOIS list."]
+
 -- | Handle the ISON ('is on?') message.
 handleIsOn :: Monad m => [String] -> IRC m ()
 handleIsOn (catMaybes . map readNick -> nicks) =
@@ -263,7 +272,8 @@ withChannel :: Monad m => ChannelName -> (Channel -> IRC m ()) -> IRC m ()
 withChannel name m = do
   chan <- M.lookup name <$> gets envChannels
   case chan of
-    Nothing -> errorReply "Channel does not exist."
+    Nothing -> thisServerReply ERR_NOSUCHCHANNEL [unChanName name
+                                                 ,"No such channel."]
     Just chan -> m chan
     
 withValidChanName :: Monad m => String -> (ChannelName -> IRC m ()) 
@@ -296,7 +306,7 @@ ifUniqueNick nick m = do
   client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
   case client of
     Nothing -> m
-    Just{}  -> thisServerReply RPL_ERR_NICKNAMEINUSE 
+    Just{}  -> thisServerReply ERR_NICKNAMEINUSE 
                                [unNick nick,"Nick is already in use."]
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
@@ -348,10 +358,23 @@ withClientByNick :: Monad m => Nick -> (Client -> IRC m ()) -> IRC m ()
 withClientByNick nick m = do
     client <- clientByNick nick
     case client of
-      Nothing -> errorReply "Unknown nick."
+      Nothing -> sendNoSuchNick nick
       Just client@Client{..} 
           | isRegistered clientUser -> m client
-          | otherwise -> errorReply "Unknown user."
+          | otherwise -> sendNoSuchNick nick
+
+-- | Perform an action with a registered user by its nickname.
+withRegUserByNick :: Monad m => Nick -> (RegUser -> IRC m ()) -> IRC m ()
+withRegUserByNick nick m = do
+  user <- regUserByNick nick
+  case user of
+    Just user -> m user
+    Nothing -> sendNoSuchNick nick
+    
+-- | Send the RPL_NOSUCHNICK reply.
+sendNoSuchNick :: Monad m => Nick -> IRC m ()
+sendNoSuchNick nick =
+  thisServerReply ERR_NOSUCHNICK [unNick nick,"No such nick."]
 
 -- | Get a registered user by nickname.
 regUserByNick :: Monad m => Nick -> IRC m (Maybe RegUser)
