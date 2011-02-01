@@ -70,6 +70,7 @@ handleMsgReg'd line mustBeReg'd =
      (PRIVMSG,[to,msg]) -> handlePrivmsg to msg
      (TOPIC,[chan,topic]) -> handleTopic chan topic
      (NOTICE,[to,msg])  -> handleNotice to msg
+     (ISON,people)      -> handleIsOn people
      _                  -> invalidMessage line
 
 -- | Log an invalid message.
@@ -184,6 +185,13 @@ handlePrivmsg name msg = sendMsgTo "PRIVMSG" name msg
 handleNotice :: Monad m => String -> String -> IRC m ()
 handleNotice name msg = sendMsgTo "NOTICE" name msg
 
+-- | Handle the ISON ('is on?') message.
+handleIsOn :: Monad m => [String] -> IRC m ()
+handleIsOn (catMaybes . map readNick -> nicks) = do
+  online <- catMaybes <$> mapM regUserByNick nicks
+  let nicks = map (unNick.regUserNick) online
+  unless (null nicks) $ thisServerReply "ISON" nicks
+
 -- Generic message functions
 
 -- | Send a message to a user or a channel (it figures it out).
@@ -264,6 +272,11 @@ withValidChanName name m
 
 -- Client/user access functions
 
+-- | Read a valid nick.
+readNick :: String -> Maybe Nick
+readNick n | validNick n = Just $ Nick n
+           | otherwise   = Nothing
+
 -- | Modify the nicks mapping.
 modifyNicks :: Monad m => (Map Nick Ref -> Map Nick Ref) -> IRC m ()
 modifyNicks f = modify $ \env -> env { envNicks = f (envNicks env) }
@@ -324,13 +337,25 @@ sendMotd = do
 userReply :: Monad m => String -> String -> [String] -> IRC m ()
 userReply nick typ ps = 
   withValidNick nick $ \nick -> do
-    clients <- gets envClients
-    client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
+    client <- clientByNick nick
     case client of
       Nothing -> errorReply "Unknown nick."
       Just Client{..} 
           | isRegistered clientUser -> clientReply clientRef typ ps
           | otherwise -> errorReply "Unknown user."
+          
+regUserByNick :: Monad m => Nick -> IRC m (Maybe RegUser)
+regUserByNick nick = do
+  c <- clientByNick nick
+  case clientUser <$> c of
+    Just (Registered u) -> return $ Just u
+    _ -> return Nothing
+
+-- | Get a client by nickname.
+clientByNick :: Monad m => Nick -> IRC m (Maybe Client)
+clientByNick nick = do
+  clients <- gets envClients
+  (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
 
 -- | Maybe get a registered user from a client.
 clientRegUser :: Client -> Maybe RegUser

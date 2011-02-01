@@ -101,7 +101,7 @@ newtype IRC m a = IRC {
            ,MonadReader Conn)
 
 data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
-           | NOTICE | TOPIC | CONNECT | DISCONNECT | NOTHING
+           | NOTICE | ISON | TOPIC | CONNECT | DISCONNECT | NOTHING
   deriving (Read,Show)
 
 data QuitType = RequestedQuit | SocketQuit deriving Eq
