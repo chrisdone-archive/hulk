@@ -104,6 +104,47 @@ data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
            | NOTICE | ISON | TOPIC | CONNECT | DISCONNECT | NOTHING
   deriving (Read,Show)
 
+
+data RPL = RPL_WHOISUSER
+         | RPL_NICK
+         | RPL_PONG
+         | RPL_JOIN
+         | RPL_QUIT
+         | RPL_NOTICE
+         | RPL_PART
+         | RPL_PRIVMSG
+         | RPL_ISON
+         | RPL_JOINS
+         | RPL_TOPIC
+         | RPL_NAMEREPLY
+         | RPL_ENDOFNAMES
+         | RPL_ERR_NICKNAMEINUSE
+         | RPL_WELCOME
+         | RPL_MOTDSTART
+         | RPL_MOTD
+         | RPL_ENDOFMOTD
+  deriving Show
+
+fromRPL :: RPL -> String
+fromRPL RPL_WHOISUSER         = "311"
+fromRPL RPL_NICK              = "NICK"
+fromRPL RPL_PONG              = "PONG"
+fromRPL RPL_QUIT              = "QUIT"
+fromRPL RPL_JOIN              = "JOIN"
+fromRPL RPL_NOTICE            = "NOTICE"
+fromRPL RPL_PART              = "PART"
+fromRPL RPL_PRIVMSG           = "PRIVMSG"
+fromRPL RPL_ISON              = "303"
+fromRPL RPL_JOINS             = "JOIN"
+fromRPL RPL_TOPIC             = "TOPIC"
+fromRPL RPL_NAMEREPLY         = "353"
+fromRPL RPL_ENDOFNAMES        = "366"
+fromRPL RPL_ERR_NICKNAMEINUSE = "433"
+fromRPL RPL_WELCOME           = "001"
+fromRPL RPL_MOTDSTART         = "375"
+fromRPL RPL_MOTD              = "372"
+fromRPL RPL_ENDOFMOTD         = "376"
+
 data QuitType = RequestedQuit | SocketQuit deriving Eq
 
 data ChannelReplyType = IncludeMe | ExcludeMe deriving Eq

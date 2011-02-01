@@ -119,20 +119,20 @@ handleNick nick =
         modifyUnregistered $ \u -> u { unregUserNick = Just nick }
         tryRegister
         asRegistered $ do
-          thisClientReply "NICK" [unNick nick]
+          thisClientReply RPL_NICK [unNick nick]
           modifyRegistered $ \u -> u { regUserNick = nick }
 
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
 handlePing p = do
   hostname <- asks connServerName
-  thisServerReply "PONG" [hostname,p]
+  thisServerReply RPL_PONG [hostname,p]
 
 -- | Handle the QUIT message.
 handleQuit :: Monad m => QuitType -> String -> IRC m ()
 handleQuit quitType msg = do
  (myChannels >>=) $ mapM_ $ \Channel{..} -> do
-   channelReply channelName "QUIT" [msg] ExcludeMe
+   channelReply channelName RPL_QUIT [msg] ExcludeMe
    removeFromChan channelName
  withRegistered $ \RegUser{regUserNick=nick} -> do
    modifyNicks $ M.delete nick
@@ -143,7 +143,7 @@ handleQuit quitType msg = do
 
 -- | Handle the TELL message.
 handleTell :: Monad m => String -> String -> IRC m ()
-handleTell name msg = sendMsgTo "NOTICE" name msg
+handleTell name msg = sendMsgTo RPL_NOTICE name msg
 
 -- | Handle the JOIN message.
 handleJoin :: Monad m => String -> IRC m ()
@@ -160,7 +160,7 @@ handlePart :: Monad m => String -> String -> IRC m ()
 handlePart name msg =
   withValidChanName name $ \name -> do
     removeFromChan name
-    channelReply name "PART" [msg] IncludeMe
+    channelReply name RPL_PART [msg] IncludeMe
 
 -- | Remove a user from a channel.
 removeFromChan :: Monad m => ChannelName -> IRC m ()
@@ -175,15 +175,15 @@ handleTopic name topic =
   withValidChanName name $ \name -> do
     let setTopic c = c { channelTopic = Just topic }
     modifyChannels $ M.adjust setTopic name
-    channelReply name "TOPIC" [unChanName name,topic] IncludeMe
+    channelReply name RPL_TOPIC [unChanName name,topic] IncludeMe
 
 -- | Handle the PRIVMSG message.
 handlePrivmsg :: Monad m => String -> String -> IRC m ()
-handlePrivmsg name msg = sendMsgTo "PRIVMSG" name msg
+handlePrivmsg name msg = sendMsgTo RPL_PRIVMSG name msg
 
 -- | Handle the NOTICE message.
 handleNotice :: Monad m => String -> String -> IRC m ()
-handleNotice name msg = sendMsgTo "NOTICE" name msg
+handleNotice name msg = sendMsgTo RPL_NOTICE name msg
 
 -- | Handle the ISON ('is on?') message.
 handleIsOn :: Monad m => [String] -> IRC m ()
@@ -191,12 +191,12 @@ handleIsOn (catMaybes . map readNick -> nicks) =
   withRegistered $ \RegUser{regUserNick=nick} -> do
     online <- catMaybes <$> mapM regUserByNick nicks
     let nicks = unwords $ map (unNick.regUserNick) online
-    unless (null nicks) $ thisServerReply "303" [unNick nick,nicks ++ " "]
+    unless (null nicks) $ thisServerReply RPL_ISON [unNick nick,nicks ++ " "]
 
 -- Generic message functions
 
 -- | Send a message to a user or a channel (it figures it out).
-sendMsgTo :: Monad m => String -> String -> String -> IRC m ()
+sendMsgTo :: Monad m => RPL -> String -> String -> IRC m ()
 sendMsgTo typ name msg =
   if validChannel name
      then withValidChanName name $ \name -> 
@@ -217,11 +217,11 @@ joinChannel name = do
   ref <- asks connRef
   let addMe c = c { channelUsers = channelUsers c ++ [ref] }
   modifyChannels $ M.adjust addMe name
-  channelReply name "JOIN" [unChanName name] IncludeMe
+  channelReply name RPL_JOIN [unChanName name] IncludeMe
   sendNamesList name
   withChannel name $ \Channel{..} -> do
     case channelTopic of
-      Just topic -> thisServerReply "TOPIC" [unChanName name,topic]
+      Just topic -> thisServerReply RPL_TOPIC [unChanName name,topic]
       Nothing -> return ()
 
 sendNamesList :: Monad m => ChannelName -> IRC m ()
@@ -231,9 +231,10 @@ sendNamesList name = do
       clients <- catMaybes <$> mapM getClientByRef channelUsers
       let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
       forM_ (splitEvery 10 nicks) $ \nicks ->
-        thisServerReply "353" [unNick me,"@",unChanName name
-                              ,unwords $ map unNick nicks]
-      thisServerReply "366" [unNick me,unChanName name,"End of /NAMES list."]
+        thisServerReply RPL_NAMEREPLY [unNick me,"@",unChanName name
+                                      ,unwords $ map unNick nicks]
+      thisServerReply RPL_ENDOFNAMES [unNick me,unChanName name
+                                     ,"End of /NAMES list."]
 
 -- | Am I in a channel?
 inChannel :: Monad m => ChannelName -> IRC m Bool
@@ -295,7 +296,8 @@ ifUniqueNick nick m = do
   client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
   case client of
     Nothing -> m
-    Just{}  -> thisServerReply "433" [unNick nick,"Nick is already in use."]
+    Just{}  -> thisServerReply RPL_ERR_NICKNAMEINUSE 
+                               [unNick nick,"Nick is already in use."]
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
 tryRegister :: MonadProvider m => IRC m ()
@@ -320,22 +322,22 @@ tryRegister =
 sendWelcome :: Monad m => IRC m ()
 sendWelcome = do
   withRegistered $ \RegUser{..} -> do
-    thisServerReply "001" [unNick regUserNick,"Welcome."]
+    thisServerReply RPL_WELCOME [unNick regUserNick,"Welcome."]
 
 -- | Send the MOTD.    
 sendMotd :: MonadProvider m => IRC m ()
 sendMotd = do
   withRegistered $ \RegUser{regUserNick=Nick nick} -> do
-    thisServerReply "375" [nick,"MOTD"]
+    thisServerReply RPL_MOTDSTART [nick,"MOTD"]
     motd <- fmap lines <$> lift provideMotd
-    let motdLine line = thisServerReply "372" [nick,line]
+    let motdLine line = thisServerReply RPL_MOTD [nick,line]
     case motd of
       Nothing -> motdLine "None."
       Just lines -> mapM_ motdLine lines
-    thisServerReply "376" [nick,"/MOTD."]
+    thisServerReply RPL_ENDOFMOTD [nick,"/MOTD."]
 
 -- | Send a client reply to a user.
-userReply :: Monad m => String -> String -> [String] -> IRC m ()
+userReply :: Monad m => String -> RPL -> [String] -> IRC m ()
 userReply nick typ ps = 
   withValidNick nick $ \nick ->
     withClientByNick nick $ \Client{..} ->
@@ -483,7 +485,7 @@ newUnregisteredUser = Unregistered $ UnregUser {
 -- Channel replies
 
 -- | Send a client reply to everyone in a channel.
-channelReply :: Monad m => ChannelName -> String -> [String] 
+channelReply :: Monad m => ChannelName -> RPL -> [String] 
              -> ChannelReplyType
              -> IRC m ()
 channelReply name cmd params typ = do
@@ -496,14 +498,14 @@ channelReply name cmd params typ = do
 -- Client replies
 
 -- | Send a client reply to the current client.
-thisClientReply :: Monad m => String -> [String] -> IRC m ()
+thisClientReply :: Monad m => RPL -> [String] -> IRC m ()
 thisClientReply typ params = do
   ref <- asks connRef
   clientReply ref typ params
 
 -- | Send a client reply of the given type with the given params, on
 -- the given connection reference.
-clientReply :: Monad m => Ref -> String -> [String] -> IRC m ()
+clientReply :: Monad m => Ref -> RPL -> [String] -> IRC m ()
 clientReply ref typ params = do
   withRegistered $ \user -> do
     client <- getClient
@@ -511,7 +513,7 @@ clientReply ref typ params = do
     reply ref msg
 
 -- | Make a new IRC message from the current client.
-newClientMsg :: Monad m => Client -> RegUser -> String -> [String] 
+newClientMsg :: Monad m => Client -> RegUser -> RPL -> [String] 
              -> IRC m Message
 newClientMsg Client{..} RegUser{..} cmd ps = do
   let nickName = NickName (unNick regUserNick)
@@ -519,7 +521,7 @@ newClientMsg Client{..} RegUser{..} cmd ps = do
                           (Just clientHostname)
   return $ Message {
     msg_prefix = Just $ nickName
-   ,msg_command = cmd
+   ,msg_command = fromRPL cmd
    ,msg_params = ps
   }
 
@@ -527,27 +529,27 @@ newClientMsg Client{..} RegUser{..} cmd ps = do
 
 -- | Send a message reply.
 notice :: Monad m => String -> IRC m ()
-notice msg = thisServerReply "NOTICE" ["*",msg]
+notice msg = thisServerReply RPL_NOTICE ["*",msg]
 
 -- | Send a server reply of the given type with the given params.
-thisServerReply :: Monad m => String -> [String] -> IRC m ()
+thisServerReply :: Monad m => RPL -> [String] -> IRC m ()
 thisServerReply typ params = do
   ref <- asks connRef
   serverReply ref typ params
 
 -- | Send a server reply of the given type with the given params.
-serverReply :: Monad m => Ref -> String -> [String] -> IRC m ()
+serverReply :: Monad m => Ref -> RPL -> [String] -> IRC m ()
 serverReply ref typ params = do
   msg <- newServerMsg typ params
   reply ref msg
 
 -- | Make a new IRC message from the server.
-newServerMsg :: Monad m => String -> [String] -> IRC m Message
+newServerMsg :: Monad m => RPL -> [String] -> IRC m Message
 newServerMsg cmd ps = do
   hostname <- asks connServerName
   return $ Message {
     msg_prefix = Just $ Server hostname
-   ,msg_command = cmd
+   ,msg_command = fromRPL cmd
    ,msg_params = ps
   }
 
