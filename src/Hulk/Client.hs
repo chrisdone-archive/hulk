@@ -337,14 +337,21 @@ sendMotd = do
 -- | Send a client reply to a user.
 userReply :: Monad m => String -> String -> [String] -> IRC m ()
 userReply nick typ ps = 
-  withValidNick nick $ \nick -> do
+  withValidNick nick $ \nick ->
+    withClientByNick nick $ \Client{..} ->
+      clientReply clientRef typ ps
+
+-- | Perform an action with a client by nickname.
+withClientByNick :: Monad m => Nick -> (Client -> IRC m ()) -> IRC m ()
+withClientByNick nick m = do
     client <- clientByNick nick
     case client of
       Nothing -> errorReply "Unknown nick."
-      Just Client{..} 
-          | isRegistered clientUser -> clientReply clientRef typ ps
+      Just client@Client{..} 
+          | isRegistered clientUser -> m client
           | otherwise -> errorReply "Unknown user."
-          
+
+-- | Get a registered user by nickname.
 regUserByNick :: Monad m => Nick -> IRC m (Maybe RegUser)
 regUserByNick nick = do
   c <- clientByNick nick
