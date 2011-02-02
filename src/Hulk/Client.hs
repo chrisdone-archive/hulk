@@ -624,11 +624,11 @@ validUser = validNick
 
 -- | Is a nickname valid? Digit/letter or one of these: -_/\\;()[]{}?`'
 validNick :: String -> Bool
-validNick = all ok where
+validNick s = all ok s && length s > 0 where
   ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
 
 -- | Valid channel name?
 validChannel :: String -> Bool
-validChannel ('#':cs) = all ok cs where
+validChannel ('#':cs) = all ok cs && length cs > 0 where
   ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
 validChannel _ = False
