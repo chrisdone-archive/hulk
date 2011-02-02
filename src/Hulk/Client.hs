@@ -241,6 +241,7 @@ joinChannel name = do
       Just topic -> thisServerReply RPL_TOPIC [unChanName name,topic]
       Nothing -> return ()
 
+-- | Send the names list of a channel.
 sendNamesList :: Monad m => ChannelName -> IRC m ()
 sendNamesList name = do
   asRegistered $
