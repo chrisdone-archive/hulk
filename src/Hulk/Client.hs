@@ -70,7 +70,7 @@ handleMsgReg'd line mustBeReg'd =
      (PRIVMSG,[to,msg]) -> handlePrivmsg to msg
      (TOPIC,[chan,topic]) -> handleTopic chan topic
      (NOTICE,[to,msg])  -> handleNotice to msg
-     (WHOIS,[nick])     -> handleWhoIs nick
+     (WHOIS,(nick:_))   -> handleWhoIs nick
      (ISON,people)      -> handleIsOn people
      _                  -> invalidMessage line
 
