@@ -2,3 +2,4 @@ dist
 auth
 *.o
 *.hi
+ssl

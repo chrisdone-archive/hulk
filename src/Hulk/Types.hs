@@ -2,16 +2,16 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Hulk.Types where
 
+import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Control.Monad.Identity
 import Data.Char
 import Data.Function
-import Data.Map             (Map)
+import Data.Map               (Map)
 import Network
-import Network.IRC          hiding (Channel)
-import System.IO
+import Network.IRC            hiding (Channel)
+import OpenSSL.Session        (SSL)
 
 data Config = Config {
       configListen :: PortNumber
@@ -20,16 +20,24 @@ data Config = Config {
     , configPreface :: Maybe FilePath
     , configPasswd :: FilePath
     , configPasswdKey :: FilePath
+    , configSSLKey :: FilePath
+    , configCertificate :: FilePath
     } deriving (Show)
 
-newtype Ref = Ref { unRef :: Handle } 
-    deriving (Show,Eq)
+data Ref = Ref { refSSL :: SSL
+               , refSocket :: Socket } 
+
+instance Show Ref where
+  show (Ref _ s) = show s
+
+instance Eq Ref where
+  Ref _ s == Ref _ s1 = s == s1
 
 instance Ord Ref where
   compare = on compare show
 
 -- | Construct a Ref value.
-newRef :: Handle -> Ref
+newRef :: SSL -> Socket -> Ref
 newRef = Ref
 
 data Error = Error String
