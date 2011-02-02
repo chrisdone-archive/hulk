@@ -190,17 +190,25 @@ handleNotice name msg = sendMsgTo RPL_NOTICE name msg
 handleWhoIs :: Monad m => String -> IRC m ()
 handleWhoIs nick =
   withValidNick nick $ \nick ->
-    withRegUserByNick nick $ \RegUser{..} -> do
---      thisServerReply RPL_WHOISUSER [unNick nick,]
-      thisServerReply RPL_ENDOFWHOIS [unNick nick,"End of WHOIS list."]
+    withClientByNick nick $ \Client{..} ->
+      withRegUserByNick nick $ \RegUser{..} -> do
+        thisNickServerReply RPL_WHOISUSER 
+                            [unNick regUserNick
+                            ,regUserUser
+                            ,clientHostname
+                            ,"*"
+                            ,regUserName]
+        thisNickServerReply RPL_ENDOFWHOIS
+                            [unNick regUserNick
+                            ,"End of WHOIS list."]
 
 -- | Handle the ISON ('is on?') message.
 handleIsOn :: Monad m => [String] -> IRC m ()
 handleIsOn (catMaybes . map readNick -> nicks) =
-  withRegistered $ \RegUser{regUserNick=nick} -> do
+  asRegistered $ do
     online <- catMaybes <$> mapM regUserByNick nicks
     let nicks = unwords $ map (unNick.regUserNick) online
-    unless (null nicks) $ thisServerReply RPL_ISON [unNick nick,nicks ++ " "]
+    unless (null nicks) $ thisNickServerReply RPL_ISON [nicks ++ " "]
 
 -- Generic message functions
 
@@ -235,15 +243,15 @@ joinChannel name = do
 
 sendNamesList :: Monad m => ChannelName -> IRC m ()
 sendNamesList name = do
-  withRegistered $ \RegUser{regUserNick=me} ->
+  asRegistered $
     withChannel name $ \Channel{..} -> do
       clients <- catMaybes <$> mapM getClientByRef channelUsers
       let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
       forM_ (splitEvery 10 nicks) $ \nicks ->
-        thisServerReply RPL_NAMEREPLY [unNick me,"@",unChanName name
-                                      ,unwords $ map unNick nicks]
-      thisServerReply RPL_ENDOFNAMES [unNick me,unChanName name
-                                     ,"End of /NAMES list."]
+        thisNickServerReply RPL_NAMEREPLY ["@",unChanName name
+                                          ,unwords $ map unNick nicks]
+      thisNickServerReply RPL_ENDOFNAMES [unChanName name
+                                         ,"End of /NAMES list."]
 
 -- | Am I in a channel?
 inChannel :: Monad m => ChannelName -> IRC m Bool
@@ -536,23 +544,28 @@ newClientMsg Client{..} RegUser{..} cmd ps = do
 sendWelcome :: Monad m => IRC m ()
 sendWelcome = do
   withRegistered $ \RegUser{..} -> do
-    thisServerReply RPL_WELCOME [unNick regUserNick,"Welcome."]
+    thisNickServerReply RPL_WELCOME ["Welcome."]
 
 -- | Send the MOTD.    
 sendMotd :: MonadProvider m => IRC m ()
 sendMotd = do
-  withRegistered $ \RegUser{regUserNick=Nick nick} -> do
-    thisServerReply RPL_MOTDSTART [nick,"MOTD"]
+  asRegistered $ do
+    thisNickServerReply RPL_MOTDSTART ["MOTD"]
     motd <- fmap lines <$> lift provideMotd
-    let motdLine line = thisServerReply RPL_MOTD [nick,line]
+    let motdLine line = thisNickServerReply RPL_MOTD [line]
     case motd of
       Nothing -> motdLine "None."
       Just lines -> mapM_ motdLine lines
-    thisServerReply RPL_ENDOFMOTD [nick,"/MOTD."]
+    thisNickServerReply RPL_ENDOFMOTD ["/MOTD."]
 
 -- | Send a message reply.
 notice :: Monad m => String -> IRC m ()
 notice msg = thisServerReply RPL_NOTICE ["*",msg]
+
+thisNickServerReply :: Monad m => RPL -> [String] -> IRC m ()
+thisNickServerReply typ params = do
+  withRegistered $ \RegUser{regUserNick=Nick nick} ->
+    thisServerReply typ (nick : params)
 
 -- | Send a server reply of the given type with the given params.
 thisServerReply :: Monad m => RPL -> [String] -> IRC m ()
