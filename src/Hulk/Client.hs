@@ -667,7 +667,9 @@ outgoing = log . ("-> " ++)
 
 -- | Log a line.
 log :: Monad m => String -> IRC m ()
-log = tell . return . LogReply
+log line = do
+  ref <- getRef
+  tell . return . LogReply $ show (unRef ref) ++ ": " ++ line
 
 -- Validation functions
 
