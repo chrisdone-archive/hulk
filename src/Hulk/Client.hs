@@ -97,7 +97,7 @@ handlePingPong = do
   lastPong <- clientLastPong <$> getClient
   now <- asks fst
   let n = diffUTCTime now lastPong
-  if n > 120
+  if n > 60*4
      then handleQuit RequestedQuit $ "Ping timeout: " ++ show n ++ " seconds"
      else do hostname <- asks $ connServerName . snd
              thisCmdReply RPL_PING [hostname]
