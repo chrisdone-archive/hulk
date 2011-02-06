@@ -84,7 +84,7 @@ handleReplies handle reply = do
 -- | Send a message to a client.
 sendMessage :: Ref -> Message -> IO ()
 sendMessage (Ref handle) msg = do
-  catch (UTF8.hPutStrLn handle $ encode msg)
+  catch (UTF8.hPutStrLn handle (encode msg ++ "\r"))
         (\_ -> hClose handle)
 
 -- | Add a line to the log file.
