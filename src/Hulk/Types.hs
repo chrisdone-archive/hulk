@@ -2,15 +2,16 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Hulk.Types where
 
+import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Control.Monad.Identity
 import Data.Char
 import Data.Function
-import Data.Map             (Map)
+import Data.Map               (Map)
+import Data.Time
 import Network
-import Network.IRC          hiding (Channel)
+import Network.IRC            hiding (Channel)
 import System.IO
 
 data Config = Config {
@@ -78,30 +79,34 @@ data RegUser = RegUser {
 } deriving Show
 
 data Client = Client {
-      clientRef :: Ref
-    , clientUser :: User
+      clientRef      :: Ref
+    , clientUser     :: User
     , clientHostname :: String
+    , clientLastPong :: UTCTime
     } deriving Show
 
 data Conn = Conn {
-   connRef :: Ref
-  ,connHostname :: String
+   connRef        :: Ref
+  ,connHostname   :: String
   ,connServerName :: String
+  ,connTime       :: UTCTime
 } deriving Show
 
 data Reply = MessageReply Ref Message | LogReply String | Close
 
 newtype IRC m a = IRC { 
-    runIRC :: ReaderT Conn (WriterT [Reply] (StateT Env m)) a
+    runIRC :: ReaderT (UTCTime,Conn) (WriterT [Reply] (StateT Env m)) a
   }
   deriving (Monad
            ,Functor
            ,MonadWriter [Reply]
            ,MonadState Env
-           ,MonadReader Conn)
+           ,MonadReader (UTCTime,Conn))
 
 data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
-           | NOTICE | ISON | WHOIS | TOPIC | CONNECT | DISCONNECT | NOTHING
+           | NOTICE | ISON | WHOIS | TOPIC | CONNECT | DISCONNECT | PINGPONG
+           | PONG
+           | NOTHING
   deriving (Read,Show)
 
 
@@ -128,6 +133,7 @@ data RPL = RPL_WHOISUSER
          | RPL_WHOISCHANNELS
          | ERR_NOSUCHNICK
          | ERR_NOSUCHCHANNEL
+         | RPL_PING
   deriving Show
 
 fromRPL :: RPL -> String
@@ -154,6 +160,7 @@ fromRPL RPL_ENDOFWHOIS    = "318"
 fromRPL ERR_NICKNAMEINUSE = "433"
 fromRPL ERR_NOSUCHNICK    = "401"
 fromRPL ERR_NOSUCHCHANNEL = "403"
+fromRPL RPL_PING          = "PING"
 
 data QuitType = RequestedQuit | SocketQuit deriving Eq
 

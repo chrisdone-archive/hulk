@@ -13,6 +13,7 @@ import           Data.List.Split
 import           Data.Map             (Map)
 import qualified Data.Map             as M
 import           Data.Maybe
+import           Data.Time
 import           Network.IRC          hiding (Channel)
 import           Prelude              hiding (log)
 
@@ -23,34 +24,41 @@ import           Hulk.Types
 -- Entry point handler
 
 -- | Handle an incoming line, try to parse it and handle the message.
-handleLine :: MonadProvider m => Env -> Conn -> String -> m ([Reply],Env)
-handleLine env conn line = runClient env conn $
+handleLine :: MonadProvider m
+              => Env -> UTCTime -> Conn -> String 
+              -> m ([Reply],Env)
+handleLine env now conn line = runClient env now conn $
   case decode line of
     Just Message{..} -> handleMsg line (readEventType msg_command,msg_params)
     Nothing  -> errorReply $ "Unable to parse " ++ show line
 
 -- | Run the client monad.    
-runClient :: MonadProvider m => Env -> Conn -> IRC m () -> m ([Reply],Env)
-runClient env conn m = do
+runClient :: MonadProvider m 
+          => Env -> UTCTime -> Conn -> IRC m () 
+          -> m ([Reply],Env)
+runClient env now conn m = do
   flip runStateT env $ 
     execWriterT $ 
-      flip runReaderT conn $
+      flip runReaderT (now,conn) $
         runIRC m
 
 -- | Handle an incoming message.
 handleMsg :: MonadProvider m => String -> (Event,[String]) -> IRC m ()
-handleMsg line msg =
+handleMsg line msg = do
   case msg of
-    (NOTHING,_) -> invalidMessage line
+    (NOTHING,_)   -> invalidMessage line
     (PASS,[pass]) -> asUnregistered $ handlePass pass
-    safeToLog -> handleMsgSafeToLog line safeToLog
+    (PINGPONG,_)  -> do incoming line; handlePingPong
+    safeToLog     -> handleMsgSafeToLog line safeToLog
     
 -- | Handle messages that are safe to log.
 handleMsgSafeToLog :: MonadProvider m => String -> (Event,[String]) 
                    -> IRC m ()
 handleMsgSafeToLog line safeToLog = do
   incoming line
+  updateLastPong
   case safeToLog of
+    (PONG,_)      -> return ()
     (USER,[user,_,_,realname]) -> asUnregistered $ handleUser user realname
     (NICK,[nick])   -> handleNick nick
     (PING,[param])  -> handlePing param
@@ -82,6 +90,17 @@ invalidMessage line = do
                  " enough parameters: " ++ show line
 
 -- Message handlers
+
+-- | Handle the PINGPONG event. Disconnect the client if timedout.
+handlePingPong :: Monad m => IRC m ()
+handlePingPong = do
+  lastPong <- clientLastPong <$> getClient
+  now <- asks fst
+  let n = diffUTCTime now lastPong
+  if n > 120
+     then handleQuit RequestedQuit $ "Ping timeout: " ++ show n ++ " seconds"
+     else do hostname <- asks $ connServerName . snd
+             thisCmdReply RPL_PING [hostname]
 
 -- | Handle the CONNECT event.
 handleConnect :: MonadProvider m => IRC m ()
@@ -115,7 +134,7 @@ handleNick nick =
   withSentPass $
     withValidNick nick $ \nick ->
       ifUniqueNick nick $ do
-        ref <- asks connRef
+        ref <- getRef
         modifyNicks $ M.insert nick ref
         modifyUnregistered $ \u -> u { unregUserNick = Just nick }
         tryRegister
@@ -126,7 +145,7 @@ handleNick nick =
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
 handlePing p = do
-  hostname <- asks connServerName
+  hostname <- asks $ connServerName . snd
   thisServerReply RPL_PONG [hostname,p]
 
 -- | Handle the QUIT message.
@@ -137,9 +156,9 @@ handleQuit quitType msg = do
    removeFromChan channelName
  withRegistered $ \RegUser{regUserNick=nick} -> do
    modifyNicks $ M.delete nick
- ref <- asks connRef
+ ref <- getRef
  modifyClients $ M.delete ref
- notice "Bye bye!"
+ notice msg
  when (quitType == RequestedQuit) $ tell [Close]
 
 -- | Handle the TELL message.
@@ -166,7 +185,7 @@ handlePart name msg =
 -- | Remove a user from a channel.
 removeFromChan :: Monad m => ChannelName -> IRC m ()
 removeFromChan name = do
-  ref <- asks connRef
+  ref <- getRef
   let remMe c = c { channelUsers = filter (/=ref) (channelUsers c) }
   modifyChannels $ M.adjust remMe name
 
@@ -219,19 +238,19 @@ sendMsgTo typ name msg =
      then withValidChanName name $ \name -> 
             channelReply name typ [unChanName name,msg] ExcludeMe
      else userReply name typ [name,msg]
-
+     
 -- Channel functions
 
 -- | Get channels that the current client is in.
 myChannels :: Monad m => IRC m [Channel]
 myChannels = do
-  ref <- asks connRef
+  ref <- getRef
   filter (elem ref . channelUsers) . map snd . M.toList <$> gets envChannels
 
 -- | Join a channel.
 joinChannel :: Monad m => ChannelName -> IRC m ()
 joinChannel name = do
-  ref <- asks connRef
+  ref <- getRef
   let addMe c = c { channelUsers = channelUsers c ++ [ref] }
   modifyChannels $ M.adjust addMe name
   channelReply name RPL_JOIN [unChanName name] IncludeMe
@@ -260,7 +279,7 @@ inChannel name = do
   chan <- M.lookup name <$> gets envChannels
   case chan of
     Nothing -> return False
-    Just Channel{..} -> (`elem` channelUsers) <$> asks connRef
+    Just Channel{..} -> (`elem` channelUsers) <$> getRef
 
 -- | Insert a new channel.
 insertChannel :: Monad m => ChannelName -> IRC m ()
@@ -292,6 +311,14 @@ withValidChanName name m
     | otherwise         = errorReply $ "Invalid channel name: " ++ name
 
 -- Client/user access functions
+
+-- | Update the last pong reply time.
+updateLastPong :: Monad m => IRC m ()
+updateLastPong = do
+  ref <- getRef
+  now <- asks fst
+  let adjust client@Client{..} = client { clientLastPong = now }
+  modifyClients $ M.adjust adjust ref
 
 -- | Read a valid nick.
 readNick :: String -> Maybe Nick
@@ -407,7 +434,7 @@ modifyRegistered f = do
 -- | Modify the current user.
 modifyUser :: Monad m => (User -> User) -> IRC m ()
 modifyUser f = do
-  ref <- clientRef <$> getClient
+  ref <- getRef
   let modUser c = c { clientUser = f (clientUser c) }
       modClient = M.adjust modUser ref
   modify $ \env -> env { envClients = modClient (envClients env) }
@@ -467,7 +494,7 @@ getClientByRef ref = do
 -- | Get the current client.
 getClient :: Monad m => IRC m Client
 getClient = do
-  ref <- asks connRef
+  ref <- getRef
   clients <- gets envClients
   case M.lookup ref clients of
     Just client -> return $ client
@@ -480,11 +507,12 @@ modifyClients f = modify $ \env -> env { envClients = f (envClients env) }
 -- | Make a current client based on the current connection.
 makeNewClient :: Monad m => IRC m Client
 makeNewClient = do
-  conn <- ask
-  let client = Client { clientRef = connRef conn
-                      , clientHostname = connHostname conn
-                      , clientUser = newUnregisteredUser }
-  modifyClients $ M.insert (connRef conn) client
+  Conn{..} <- asks snd
+  let client = Client { clientRef = connRef
+                      , clientHostname = connHostname
+                      , clientUser = newUnregisteredUser 
+                      , clientLastPong = connTime }
+  modifyClients $ M.insert connRef client
   return client
 
 -- | Make a new unregistered user.
@@ -504,7 +532,7 @@ channelReply :: Monad m => ChannelName -> RPL -> [String]
              -> IRC m ()
 channelReply name cmd params typ = do
   withChannel name $ \Channel{..} -> do
-    ref <- asks connRef
+    ref <- getRef
     forM_ channelUsers $ \theirRef -> do
       unless (typ == ExcludeMe && ref == theirRef) $ 
         clientReply theirRef cmd params
@@ -514,7 +542,7 @@ channelReply name cmd params typ = do
 -- | Send a client reply to the current client.
 thisClientReply :: Monad m => RPL -> [String] -> IRC m ()
 thisClientReply typ params = do
-  ref <- asks connRef
+  ref <- getRef
   clientReply ref typ params
 
 -- | Send a client reply of the given type with the given params, on
@@ -571,7 +599,7 @@ thisNickServerReply typ params = do
 -- | Send a server reply of the given type with the given params.
 thisServerReply :: Monad m => RPL -> [String] -> IRC m ()
 thisServerReply typ params = do
-  ref <- asks connRef
+  ref <- getRef
   serverReply ref typ params
 
 -- | Send a server reply of the given type with the given params.
@@ -583,12 +611,37 @@ serverReply ref typ params = do
 -- | Make a new IRC message from the server.
 newServerMsg :: Monad m => RPL -> [String] -> IRC m Message
 newServerMsg cmd ps = do
-  hostname <- asks connServerName
+  hostname <- asks $ connServerName . snd
   return $ Message {
     msg_prefix = Just $ Server hostname
    ,msg_command = fromRPL cmd
    ,msg_params = ps
   }
+  
+-- | Send a cmd reply of the given type with the given params.
+thisCmdReply :: Monad m => RPL -> [String] -> IRC m ()
+thisCmdReply typ params = do
+  ref <- getRef
+  cmdReply ref typ params
+
+-- | Send a cmd reply of the given type with the given params.
+cmdReply :: Monad m => Ref -> RPL -> [String] -> IRC m ()
+cmdReply ref typ params = do
+  msg <- newCmdMsg typ params
+  reply ref msg
+
+-- | Make a new IRC message from the cmd.
+newCmdMsg :: Monad m => RPL -> [String] -> IRC m Message
+newCmdMsg cmd ps = do
+  return $ Message {
+    msg_prefix = Nothing
+   ,msg_command = fromRPL cmd
+   ,msg_params = ps
+  }
+
+-- | Get the current connection ref.
+getRef :: Monad m => IRC m Ref
+getRef = asks $ connRef . snd
 
 -- Output functions
 

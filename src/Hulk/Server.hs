@@ -1,19 +1,22 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
 module Hulk.Server (start) where
 
 import           Control.Applicative
 import           Control.Concurrent
+import           Control.Concurrent.Delay
 import           Control.Monad
 import           Control.Monad.Fix
 import           Control.Monad.Reader
-import qualified Data.Map             as M
+import qualified Data.Map                 as M
+import           Data.Time
 import           Network
 import           Network.IRC
 import           System.IO
-import           System.IO.UTF8       as UTF8
+import           System.IO.UTF8           as UTF8
 
 import           Hulk.Client
-import           Hulk.Providers ()
+import           Hulk.Providers           ()
 import           Hulk.Types
 
 -- | Start an IRC server with the given configuration.
@@ -27,9 +30,11 @@ start config = withSocketsDo $ do
   forever $ do
     (handle,host,_port) <- accept listenSock
     hSetBuffering handle NoBuffering
+    now <- getCurrentTime
     let conn = Conn { connRef = newRef handle
                     , connHostname = host
                     , connServerName = configHostname config
+                    , connTime = now
                     }
     _ <- forkIO $ handleClient config handle envar conn
     return ()
@@ -38,13 +43,16 @@ start config = withSocketsDo $ do
 handleClient :: Config -> Handle -> MVar Env -> Conn -> IO ()
 handleClient config handle env conn = do
   let runHandle = runClientHandler config env handle conn
-  runHandle $ makeLine CONNECT []
+      runLine x y = runHandle $ makeLine x y
+  pinger <- forkIO $ forever $ do delayMinutes 2; runLine PINGPONG []
   fix $ \loop -> do
-    line <- catch (Right <$> UTF8.hGetLine handle) (return . Left)
+    line <- catch (Right <$> UTF8.hGetLine handle)
+                  (\e -> do killThread pinger
+                            return $ Left e)
     case filter (not.newline) <$> line of
       Right []   -> loop
       Right line -> do runHandle (line++"\r"); loop
-      Left _err  -> runHandle $ makeLine DISCONNECT ["Connection lost."]
+      Left _err  -> runLine DISCONNECT ["Connection lost."]
 
   where newline c = c=='\n' || c=='\r'
 
@@ -58,8 +66,10 @@ makeLine event params = (++"\r") $ encode $
 -- | Handle a received line from the client.
 runClientHandler :: Config -> MVar Env -> Handle -> Conn -> String -> IO ()
 runClientHandler config env handle conn line = do
+  now <- getCurrentTime
   modifyMVar_ env $ \env -> do
-    (replies,env) <- runReaderT (runHulkIO $ handleLine env conn line) config
+    (replies,env) <- runReaderT (runHulkIO $ handleLine env now conn line)
+                                config
     mapM_ (handleReplies handle) replies
     return env
 

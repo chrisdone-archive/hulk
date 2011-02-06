@@ -25,6 +25,7 @@ Executable hulk
                     ,split == 0.1.2.*
                     ,utf8-string == 0.3.*
                     ,Crypto==4.2.*
+                    ,time == 1.1.*
 
 Executable hulk-generate-pass
   Main-is:          GeneratePass.hs
