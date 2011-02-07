@@ -156,6 +156,8 @@ handleQuit quitType msg = do
    removeFromChan channelName
  withRegistered $ \RegUser{regUserNick=nick} -> do
    modifyNicks $ M.delete nick
+ withUnegistered $ \UnregUser{unregUserNick=nick} -> do
+   maybe (return ()) (modifyNicks . M.delete) nick
  ref <- getRef
  modifyClients $ M.delete ref
  notice msg
