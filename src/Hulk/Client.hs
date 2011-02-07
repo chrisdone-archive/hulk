@@ -143,6 +143,10 @@ handleNick nick =
           (myChannels >>=) $ mapM_ $ \Channel{..} -> do
             channelReply channelName RPL_NICK [unNick nick] ExcludeMe
           modifyRegistered $ \u -> u { regUserNick = nick }
+        withRegistered $ \RegUser{regUserNick=nick} -> 
+          modifyNicks $ M.delete nick
+        withUnegistered $ \UnregUser{unregUserNick=nick} -> 
+          maybe (return ()) (modifyNicks . M.delete) nick
 
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
