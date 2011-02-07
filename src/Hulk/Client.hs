@@ -140,6 +140,8 @@ handleNick nick =
         tryRegister
         asRegistered $ do
           thisClientReply RPL_NICK [unNick nick]
+          (myChannels >>=) $ mapM_ $ \Channel{..} -> do
+            channelReply channelName RPL_NICK [unNick nick] ExcludeMe
           modifyRegistered $ \u -> u { regUserNick = nick }
 
 -- | Handle the PING message.
