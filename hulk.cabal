@@ -1,6 +1,7 @@
 Name:                hulk
 Version:             0.1
 Synopsis:            IRC daemon.
+Description:         An IRC daemon with mandatory authentication.
 License:             BSD3
 License-file:        LICENSE
 Author:              Chris Done
@@ -16,29 +17,29 @@ Executable hulk
   Ghc-options:       -threaded
   Hs-Source-Dirs:    src
   Build-depends:     base >= 4 && <5
-                    ,cmdargs == 0.6.*
-                    ,network == 2.3.*
-                    ,ConfigFile == 1.0.*
-                    ,unix == 2.4.*
-                    ,mtl == 1.1.*
-                    ,containers == 0.3.*
-                    ,irc == 0.4.4.*
-                    ,split == 0.1.2.*
-                    ,utf8-string == 0.3.*
-                    ,Crypto==4.2.*
-                    ,time == 1.1.*
+                    ,cmdargs >= 0.6 && <0.7
+                    ,network >= 2.2 && < 2.4
+                    ,ConfigFile >= 1.0 && < 1.1
+                    ,unix >= 2.4 && < 2.5
+                    ,mtl >= 1.1 && < 1.2
+                    ,containers >= 0.3 && < 0.4
+                    ,irc >= 0.4 && < 0.5
+                    ,split >= 0.1 && < 0.2
+                    ,utf8-string >= 0.3 && < 0.4
+                    ,Crypto>=4.2 && < 4.3
+                    ,time >= 1.1 && < 1.2
 
 Executable hulk-generate-pass
   Main-is:          GeneratePass.hs
   Hs-Source-Dirs:   src
   Build-depends:    base >= 4 && <5
-                    ,cmdargs == 0.6.*
-                    ,network == 2.3.*
-                    ,ConfigFile == 1.0.*
-                    ,unix == 2.4.*
-                    ,mtl == 1.1.*
-                    ,containers == 0.3.*
-                    ,irc == 0.4.4.*
-                    ,split == 0.1.2.*
-                    ,utf8-string == 0.3.*
-                    ,Crypto==4.2.*
+                    ,cmdargs >= 0.6 && <0.7
+                    ,network >= 2.2 && < 2.4
+                    ,ConfigFile >= 1.0 && < 1.1
+                    ,unix >= 2.4 && < 2.5
+                    ,mtl >= 1.1 && < 1.2
+                    ,containers >= 0.3 && < 0.4
+                    ,irc >= 0.4 && < 0.5
+                    ,split >= 0.1 && < 0.2
+                    ,utf8-string >= 0.3 && <0.4
+                    ,Crypto>=4.2 && <4.3
