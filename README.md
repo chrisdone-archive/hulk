@@ -53,7 +53,7 @@ Change the port setting in hulk.conf:
 
 Generate an SSL certificate:
 
-    $ openssl req -new -out mail.pem -keyout mail.pem -nodes -x509 -days 365
+    $ openssl req -new -out hulk.pem -keyout hulk.pem -nodes -x509 -days 365
 
 Make a stunnel.conf file:
 
