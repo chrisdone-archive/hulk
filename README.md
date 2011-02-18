@@ -28,7 +28,10 @@ Put a salt for your passwords in auth/passwd. For example:
 
 Then generate a password for your IRC user:
 
-    $ hulk-generate-pass joebloggs >> auth/passwd
+    $ hulk-generate-pass -u demo -c=hulk.conf >> auth/passwd
+
+(It will wait for a single line containing a pass and output the user
+and sha1 sum.)
 
 ## Start the server
 
