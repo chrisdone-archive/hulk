@@ -1,24 +1,26 @@
-# Installation
+# Hulk IRC Server Guide
 
-## From Hackage
+## Installation
+
+### From Hackage
 
     $ cabal install hulk
 
-## From Github
+### From Github
 
     $ git clone git://github.com/chrisdone/hulk.git
     $ cd hulk
     $ cabal install
 
-# Usage
+## Usage
 
-## Configuration
+### Configuration
 
     $ cp hulk.conf.example hulk.conf
     
 You can edit the port, server name and MOTD file in here.
     
-## Auth
+### Auth
 
     $ mkdir auth
 
@@ -33,7 +35,7 @@ Then generate a password for your IRC user:
 (It will wait for a single line containing a pass and output the user
 and sha1 sum.)
 
-## Start the server
+### Start the server
 
     $ hulk -chulk.conf
 
@@ -43,7 +45,7 @@ configuration option later. (Send me a patch if you already did this!)
 Clients *must* connect with a password and user that matches the users
 and passwords in your `auth/passwd` file.
 
-# Using with SSL
+## Using with SSL
 
 You can use it with stunnel.
 
@@ -76,18 +78,17 @@ Then run hulk:
 
     hulk -chulk.conf
 
-# Logging
+## Logging
 
 Hulk doesn't support specific channel logging yet, but you can use a
 logger bot.
 
     $ cabal install hog
-
     $ hog -h=127.0.0.1 --port=6666 -n=hog -u=hog --pass=mypassword --channels=#dev,#x -l/directory/of/logs -d5
 
 `-d5` is the timeout before reconnect.
 
-# Using an announcer bot
+## Using an announcer bot
 
 If you're using a private IRC server you're probably using it at a dev
 company, and you probably want to make announcements about commits,
@@ -105,7 +106,7 @@ Then run it:
     $ rss2irc http://myserver/foo.atom announce@127.0.0.1/#dev \
       -p 6667 -i 1 -l  --pass myannouncepass
 
-# Utility for 'telling' people things externally
+## Utility for 'telling' people things externally
 
 Sometimes you want automatic scripts to send notices to the IRC.
 
