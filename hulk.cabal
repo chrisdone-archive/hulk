@@ -9,6 +9,7 @@ Copyright:           2010 Chris Done
 Category:            Network
 Build-type:          Simple
 Cabal-version:       >=1.2
+Extra-source-files:  README.md, hulk.conf.example, txt/MOTD, txt/PREFACE
 
 Executable hulk
   Main-is:           Main.hs

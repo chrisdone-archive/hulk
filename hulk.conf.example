@@ -1,0 +1,11 @@
+[LISTEN]
+port = 6667
+hostname = myhostname
+
+[STRINGS]
+motd_file = txt/MOTD
+preface_file = txt/PREFACE
+
+[AUTH]
+passwd_file = auth/passwd
+passwd_key = auth/passwd-key
