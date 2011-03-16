@@ -1,5 +1,5 @@
 Name:                hulk
-Version:             0.1.1
+Version:             0.1.2
 Synopsis:            IRC daemon.
 Description:         An IRC daemon with mandatory authentication.
 License:             BSD3
