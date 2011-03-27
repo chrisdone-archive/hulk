@@ -3,3 +3,6 @@ auth
 *.o
 *.hi
 ssl
+cabal-dev
+src/TAGS
+src/tags
