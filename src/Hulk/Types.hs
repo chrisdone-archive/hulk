@@ -39,6 +39,7 @@ data Env = Env {
    envClients :: Map Ref Client
   ,envNicks :: Map Nick Ref
   ,envChannels :: Map ChannelName Channel
+  ,envIds :: Integer
 }
 
 newtype Nick = Nick { unNick :: String } deriving Show
@@ -134,7 +135,7 @@ data RPL = RPL_WHOISUSER
          | ERR_NOSUCHNICK
          | ERR_NOSUCHCHANNEL
          | RPL_PING
-  deriving Show
+  deriving (Eq,Show)
 
 fromRPL :: RPL -> String
 fromRPL RPL_WHOISUSER     = "311"
@@ -164,7 +165,7 @@ fromRPL RPL_PING          = "PING"
 
 data QuitType = RequestedQuit | SocketQuit deriving Eq
 
-data ChannelReplyType = IncludeMe | ExcludeMe deriving Eq
+data ChannelReplyType = IncludeMe | ExcludeMe | OnlyMe deriving Eq
 
 class Monad m => MonadProvider m where
   providePreface   :: m (Maybe String)

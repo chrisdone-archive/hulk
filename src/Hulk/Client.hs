@@ -120,7 +120,7 @@ handlePass pass = do
 -- | Handle the USER message.
 handleUser :: MonadProvider m => String -> String -> IRC m ()
 handleUser user realname = do
-  withSentPass $
+  -- withSentPass $
     if validUser user
        then do modifyUnregistered $ \u -> u { unregUserUser = Just user
                                             , unregUserName = Just realname }
@@ -131,7 +131,7 @@ handleUser user realname = do
 -- | Handle the USER message.
 handleNick :: MonadProvider m => String -> IRC m ()
 handleNick nick =
-  withSentPass $
+  -- withSentPass $
     withValidNick nick $ \nick ->
       ifUniqueNick nick $ do
         ref <- getRef
@@ -158,7 +158,7 @@ handlePing p = do
 handleQuit :: Monad m => QuitType -> String -> IRC m ()
 handleQuit quitType msg = do
  (myChannels >>=) $ mapM_ $ \Channel{..} -> do
-   channelReply channelName RPL_QUIT [msg] ExcludeMe
+--   channelReply channelName RPL_QUIT [msg] ExcludeMe
    removeFromChan channelName
  withRegistered $ \RegUser{regUserNick=nick} -> do
    modifyNicks $ M.delete nick
@@ -188,7 +188,7 @@ handlePart :: Monad m => String -> String -> IRC m ()
 handlePart name msg =
   withValidChanName name $ \name -> do
     removeFromChan name
-    channelReply name RPL_PART [msg] IncludeMe
+    channelReply name RPL_PART [msg] OnlyMe
 
 -- | Remove a user from a channel.
 removeFromChan :: Monad m => ChannelName -> IRC m ()
@@ -261,8 +261,8 @@ joinChannel name = do
   ref <- getRef
   let addMe c = c { channelUsers = channelUsers c ++ [ref] }
   modifyChannels $ M.adjust addMe name
-  channelReply name RPL_JOIN [unChanName name] IncludeMe
-  sendNamesList name
+  channelReply name RPL_JOIN [unChanName name] OnlyMe
+--  sendNamesList name
   withChannel name $ \Channel{..} -> do
     case channelTopic of
       Just topic -> thisServerReply RPL_TOPIC [unChanName name,topic]
@@ -360,17 +360,14 @@ tryRegister =
     let details = (,,,) <$> unregUserName
                         <*> unregUserNick
                         <*> unregUserUser
-                        <*> unregUserPass
+                        <*> (unregUserPass `mappend` Just "")
     case details of
       Nothing -> return ()
       Just (name,nick,user,pass) -> do
-        authentic <- lift $ authenticate user pass
-        if not authentic
-           then errorReply $ "Wrong user/pass."
-           else do modifyUser $ \_ ->
-                     Registered $ RegUser name nick user pass
-                   sendWelcome
-                   sendMotd
+        modifyUser $ \_ ->
+            Registered $ RegUser name nick user pass
+        sendWelcome
+        sendMotd
 
 -- | Send a client reply to a user.
 userReply :: Monad m => String -> RPL -> [String] -> IRC m ()
@@ -542,7 +539,8 @@ channelReply name cmd params typ = do
   withChannel name $ \Channel{..} -> do
     ref <- getRef
     forM_ channelUsers $ \theirRef -> do
-      unless (typ == ExcludeMe && ref == theirRef) $ 
+      unless ((typ == ExcludeMe && ref == theirRef) ||
+              (typ == OnlyMe && ref /= theirRef)) $ 
         clientReply theirRef cmd params
 
 -- Client replies
@@ -562,11 +560,21 @@ clientReply ref typ params = do
     msg <- newClientMsg client user typ params
     reply ref msg
 
+genId :: Monad m => IRC m Integer
+genId = do
+  id <- gets envIds
+  modify $ \s -> s { envIds = id + 1 }
+  return id
+
 -- | Make a new IRC message from the current client.
 newClientMsg :: Monad m => Client -> RegUser -> RPL -> [String] 
              -> IRC m Message
 newClientMsg Client{..} RegUser{..} cmd ps = do
-  let nickName = NickName (unNick regUserNick)
+  let anon = cmd `elem` [RPL_PRIVMSG,RPL_TOPIC]
+  msgid <- if anon then genId else return 0
+  let fromNick | anon      = show msgid
+               | otherwise = unNick regUserNick
+      nickName = NickName fromNick
                           (Just regUserUser)
                           (Just clientHostname)
   return $ Message {
