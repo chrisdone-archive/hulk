@@ -618,11 +618,12 @@ sendEvents = do
     ref <- getRef
     forM_ filtered $ \msg -> do
       case msg of
-        (time,from,rpl@RPL_PRIVMSG,[name,msg])
+        (time,from',rpl@RPL_PRIVMSG,[name,msg])
           | name == user || "#" `isPrefixOf` name -> do
           when ("#" `isPrefixOf` name) $ do
             handleJoin name
-          let nickName = NickName from
+          let from = filter (\c -> isDigit c || isLetter c) from'
+              nickName = NickName from
                                   (Just from)
                                   (Just "offline")
           reply ref $ Message {
