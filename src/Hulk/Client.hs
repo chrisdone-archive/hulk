@@ -9,11 +9,13 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Writer
 import           Data.Char
+import           Data.List
 import           Data.List.Split
 import           Data.Map             (Map)
 import qualified Data.Map             as M
 import           Data.Maybe
 import           Data.Time
+import           Data.Time.JSON
 import           Network.IRC          hiding (Channel)
 import           Prelude              hiding (log)
 
@@ -58,7 +60,7 @@ handleMsgSafeToLog line safeToLog = do
   incoming line
   updateLastPong
   case safeToLog of
-    (PONG,_)      -> return ()
+    (PONG,_)      -> handlePong
     (USER,[user,_,_,realname]) -> asUnregistered $ handleUser user realname
     (NICK,[nick])   -> handleNick nick
     (PING,[param])  -> handlePing param
@@ -69,7 +71,7 @@ handleMsgSafeToLog line safeToLog = do
     mustBeReg'd -> handleMsgReg'd line mustBeReg'd
 
 -- | Handle messages that can only be used when registered.
-handleMsgReg'd :: Monad m => String -> (Event,[String]) -> IRC m ()
+handleMsgReg'd :: MonadProvider m => String -> (Event,[String]) -> IRC m ()
 handleMsgReg'd line mustBeReg'd =
   asRegistered $
    case mustBeReg'd of
@@ -90,6 +92,14 @@ invalidMessage line = do
                  " enough parameters: " ++ show line
 
 -- Message handlers
+
+handlePong :: MonadProvider m => IRC m ()
+handlePong = do
+  now <- asks fst
+  withRegistered $ \RegUser{regUserUser=user} -> do
+    lift $ provideWriteUser UserData { userDataUser = user
+                                     , userDataLastSeen = DateTime now
+                                     }
 
 -- | Handle the PINGPONG event. Disconnect the client if timedout.
 handlePingPong :: Monad m => IRC m ()
@@ -206,8 +216,10 @@ handleTopic name topic =
     channelReply name RPL_TOPIC [unChanName name,topic] IncludeMe
 
 -- | Handle the PRIVMSG message.
-handlePrivmsg :: Monad m => String -> String -> IRC m ()
-handlePrivmsg name msg = sendMsgTo RPL_PRIVMSG name msg
+handlePrivmsg :: MonadProvider m => String -> String -> IRC m ()
+handlePrivmsg name msg = do
+  sendMsgTo RPL_PRIVMSG name msg
+  historyLog RPL_PRIVMSG [name,msg]
 
 -- | Handle the NOTICE message.
 handleNotice :: Monad m => String -> String -> IRC m ()
@@ -246,7 +258,7 @@ sendMsgTo typ name msg =
      then withValidChanName name $ \name -> 
             channelReply name typ [unChanName name,msg] ExcludeMe
      else userReply name typ [name,msg]
-     
+
 -- Channel functions
 
 -- | Get channels that the current client is in.
@@ -371,6 +383,7 @@ tryRegister =
                      Registered $ RegUser name nick user pass
                    sendWelcome
                    sendMotd
+                   sendEvents
 
 -- | Send a client reply to a user.
 userReply :: Monad m => String -> RPL -> [String] -> IRC m ()
@@ -595,6 +608,32 @@ sendMotd = do
       Just lines -> mapM_ motdLine lines
     thisNickServerReply RPL_ENDOFMOTD ["/MOTD."]
 
+sendEvents :: MonadProvider m => IRC m ()
+sendEvents = do
+  withRegistered $ \RegUser{regUserUser=user} -> do
+    events <- lift provideLog
+    UserData{userDataLastSeen=DateTime lastSeen} <- lift $ provideUser user
+    let filtered = flip filter events $ \(DateTime time,_from,_typ,_params) ->
+                    time >. lastSeen
+    ref <- getRef
+    forM_ filtered $ \msg -> do
+      case msg of
+        (time,from,rpl@RPL_PRIVMSG,[name,msg])
+          | name == user || "#" `isPrefixOf` name -> do
+          when ("#" `isPrefixOf` name) $ do
+            handleJoin name
+          let nickName = NickName from
+                                  (Just from)
+                                  (Just "offline")
+          reply ref $ Message {
+                        msg_prefix = Just $ nickName
+                       ,msg_command = fromRPL rpl
+                       ,msg_params = [name,"[" ++ show time ++ "] " ++ msg]
+                       }
+        _ -> return ()
+
+     where x >. y = x `diffUTCTime` y > 0
+
 -- | Send a message reply.
 notice :: Monad m => String -> IRC m ()
 notice msg = thisServerReply RPL_NOTICE ["*",msg]
@@ -678,6 +717,11 @@ log :: Monad m => String -> IRC m ()
 log line = do
   ref <- getRef
   tell . return . LogReply $ show (unRef ref) ++ ": " ++ line
+
+historyLog :: MonadProvider m => RPL -> [String] -> IRC m ()
+historyLog rpl params = do
+  withRegistered $ \RegUser{regUserName=name} -> do
+    lift $ provideLogger name rpl params
 
 -- Validation functions
 

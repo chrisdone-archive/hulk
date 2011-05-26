@@ -1,7 +1,8 @@
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, RecordWildCards #-}
 module Hulk.Types where
 
+import Control.Applicative
 import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State
@@ -10,9 +11,11 @@ import Data.Char
 import Data.Function
 import Data.Map               (Map)
 import Data.Time
+import Data.Time.JSON
 import Network
 import Network.IRC            hiding (Channel)
 import System.IO
+import Text.JSON
 
 data Config = Config {
       configListen :: PortNumber
@@ -21,6 +24,8 @@ data Config = Config {
     , configPreface :: Maybe FilePath
     , configPasswd :: FilePath
     , configPasswdKey :: FilePath
+    , configUserData :: FilePath
+    , configLogFile :: FilePath
     } deriving (Show)
 
 newtype Ref = Ref { unRef :: Handle } 
@@ -40,6 +45,19 @@ data Env = Env {
   ,envNicks :: Map Nick Ref
   ,envChannels :: Map ChannelName Channel
 }
+
+data UserData = UserData {
+   userDataUser :: String
+  ,userDataLastSeen :: DateTime
+}
+
+instance JSON UserData where
+  readJSON o = do obj <- readJSON o
+                  UserData <$> valFromObj "user" obj
+                           <*> valFromObj "last_seen" obj
+  showJSON UserData{..} =
+    makeObj [("user",showJSON userDataUser)
+            ,("last_seen",showJSON userDataLastSeen)]
 
 newtype Nick = Nick { unNick :: String } deriving Show
 
@@ -134,7 +152,11 @@ data RPL = RPL_WHOISUSER
          | ERR_NOSUCHNICK
          | ERR_NOSUCHCHANNEL
          | RPL_PING
-  deriving Show
+  deriving (Show,Read)
+
+instance JSON RPL where
+  readJSON j = read <$> readJSON j
+  showJSON x = showJSON $ show x
 
 fromRPL :: RPL -> String
 fromRPL RPL_WHOISUSER     = "311"
@@ -171,6 +193,10 @@ class Monad m => MonadProvider m where
   provideMotd      :: m (Maybe String)
   provideKey       :: m String
   providePasswords :: m String
+  provideWriteUser :: UserData -> m ()
+  provideUser      :: String -> m UserData
+  provideLogger    :: String -> RPL -> [String] -> m ()
+  provideLog       :: m [(DateTime,String,RPL,[String])]
 
 newtype HulkIO a = HulkIO { runHulkIO :: ReaderT Config IO a }
  deriving (Monad,MonadReader Config,Functor,MonadIO)

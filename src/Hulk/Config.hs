@@ -20,12 +20,16 @@ getConfig conf = do
         preface <- get c "STRINGS" "preface_file"
         passwd <- get c "AUTH" "passwd_file"
         key <- get c "AUTH" "passwd_key"
+        users <- get c "USERS" "data_dir"
+        logs <- get c "LOGS" "event_log"
         return Config { configListen = fromIntegral (listen::Word16)
                       , configMotd = Just motd 
                       , configHostname = hostname
                       , configPasswd = passwd
                       , configPasswdKey = key
                       , configPreface = Just preface
+                      , configUserData = users
+                      , configLogFile = logs
                       }
   case config of
     Left cperr -> error $ show cperr

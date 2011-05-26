@@ -33,6 +33,12 @@ Executable hulk
                     ,utf8-string >= 0.3 && < 0.4
                     ,Crypto>=4.2 && < 4.3
                     ,time >= 1.1 && < 1.2
+                    ,json >= 0.4 && < 0.5
+                    ,old-locale >= 1.0 && <1.1
+                    ,old-time >= 1.0 && <1.1
+                    ,directory >= 1.0 && < 1.1
+                    ,filepath >= 1.1 && < 1.2
+                    ,strict >= 0.3 && < 0.4
 
 Executable hulk-generate-pass
   Main-is:          GeneratePass.hs
