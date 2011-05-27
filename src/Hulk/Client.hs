@@ -721,7 +721,7 @@ log line = do
 
 historyLog :: MonadProvider m => RPL -> [String] -> IRC m ()
 historyLog rpl params = do
-  withRegistered $ \RegUser{regUserName=name} -> do
+  withRegistered $ \RegUser{regUserUser=name} -> do
     lift $ provideLogger name rpl params
 
 -- Validation functions
