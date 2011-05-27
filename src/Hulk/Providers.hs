@@ -54,7 +54,7 @@ instance MonadProvider HulkIO where
                _ -> Nothing
 
 normalizeUser :: [Char] -> [Char]
-normalizeUser = takeWhile (\c -> isDigit c || isLetter c)
+normalizeUser = filter (\c -> isDigit c || isLetter c)
 
 maybeReadFile :: (Config -> Maybe FilePath) -> HulkIO (Maybe String)
 maybeReadFile get = do 
