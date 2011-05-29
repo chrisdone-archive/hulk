@@ -68,7 +68,7 @@ runClientHandler :: Config -> MVar Env -> Handle -> Conn -> String -> IO ()
 runClientHandler config env handle conn line = do
   now <- getCurrentTime
   modifyMVar_ env $ \env -> do
-    (replies,env) <- runReaderT (runHulkIO $ handleLine env now conn line)
+    (replies,env) <- runReaderT (runHulkIO $ handleLine config env now conn line)
                                 config
     mapM_ (handleReplies handle) replies
     return env

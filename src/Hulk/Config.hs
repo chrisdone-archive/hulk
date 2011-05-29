@@ -22,6 +22,7 @@ getConfig conf = do
         key <- get c "AUTH" "passwd_key"
         users <- get c "USERS" "data_dir"
         logs <- get c "LOGS" "event_log"
+        chans <- fmap words $ get c "LOGS" "channels"
         return Config { configListen = fromIntegral (listen::Word16)
                       , configMotd = Just motd 
                       , configHostname = hostname
@@ -30,6 +31,7 @@ getConfig conf = do
                       , configPreface = Just preface
                       , configUserData = users
                       , configLogFile = logs
+                      , configLogChans = chans
                       }
   case config of
     Left cperr -> error $ show cperr

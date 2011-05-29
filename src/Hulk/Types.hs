@@ -26,6 +26,7 @@ data Config = Config {
     , configPasswdKey :: FilePath
     , configUserData :: FilePath
     , configLogFile :: FilePath
+    , configLogChans :: [String]
     } deriving (Show)
 
 newtype Ref = Ref { unRef :: Handle } 
@@ -113,13 +114,13 @@ data Conn = Conn {
 data Reply = MessageReply Ref Message | LogReply String | Close
 
 newtype IRC m a = IRC { 
-    runIRC :: ReaderT (UTCTime,Conn) (WriterT [Reply] (StateT Env m)) a
+    runIRC :: ReaderT (UTCTime,Conn,Config) (WriterT [Reply] (StateT Env m)) a
   }
   deriving (Monad
            ,Functor
            ,MonadWriter [Reply]
            ,MonadState Env
-           ,MonadReader (UTCTime,Conn))
+           ,MonadReader (UTCTime,Conn,Config))
 
 data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
            | NOTICE | ISON | WHOIS | TOPIC | CONNECT | DISCONNECT | PINGPONG

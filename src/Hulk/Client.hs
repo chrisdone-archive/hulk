@@ -27,21 +27,21 @@ import           Hulk.Types
 
 -- | Handle an incoming line, try to parse it and handle the message.
 handleLine :: MonadProvider m
-              => Env -> UTCTime -> Conn -> String 
+              => Config -> Env -> UTCTime -> Conn -> String 
               -> m ([Reply],Env)
-handleLine env now conn line = runClient env now conn $
+handleLine config env now conn line = runClient config env now conn $
   case decode line of
     Just Message{..} -> handleMsg line (readEventType msg_command,msg_params)
     Nothing  -> errorReply $ "Unable to parse " ++ show line
 
 -- | Run the client monad.    
 runClient :: MonadProvider m 
-          => Env -> UTCTime -> Conn -> IRC m () 
+          => Config -> Env -> UTCTime -> Conn -> IRC m () 
           -> m ([Reply],Env)
-runClient env now conn m = do
+runClient config env now conn m = do
   flip runStateT env $ 
     execWriterT $ 
-      flip runReaderT (now,conn) $
+      flip runReaderT (now,conn,config) $
         runIRC m
 
 -- | Handle an incoming message.
@@ -95,7 +95,7 @@ invalidMessage line = do
 
 handlePong :: MonadProvider m => IRC m ()
 handlePong = do
-  now <- asks fst
+  now <- askTime
   withRegistered $ \RegUser{regUserUser=user} -> do
     lift $ provideWriteUser UserData { userDataUser = user
                                      , userDataLastSeen = DateTime now
@@ -105,11 +105,11 @@ handlePong = do
 handlePingPong :: Monad m => IRC m ()
 handlePingPong = do
   lastPong <- clientLastPong <$> getClient
-  now <- asks fst
+  now <- askTime
   let n = diffUTCTime now lastPong
   if n > 60*4
      then handleQuit RequestedQuit $ "Ping timeout: " ++ show n ++ " seconds"
-     else do hostname <- asks $ connServerName . snd
+     else do hostname <- askConnServerName
              thisCmdReply RPL_PING [hostname]
 
 -- | Handle the CONNECT event.
@@ -161,7 +161,7 @@ handleNick nick =
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
 handlePing p = do
-  hostname <- asks $ connServerName . snd
+  hostname <- askConnServerName
   thisServerReply RPL_PONG [hostname,p]
 
 -- | Handle the QUIT message.
@@ -336,7 +336,7 @@ withValidChanName name m
 updateLastPong :: Monad m => IRC m ()
 updateLastPong = do
   ref <- getRef
-  now <- asks fst
+  now <- askTime
   let adjust client@Client{..} = client { clientLastPong = now }
   modifyClients $ M.adjust adjust ref
 
@@ -528,7 +528,7 @@ modifyClients f = modify $ \env -> env { envClients = f (envClients env) }
 -- | Make a current client based on the current connection.
 makeNewClient :: Monad m => IRC m Client
 makeNewClient = do
-  Conn{..} <- asks snd
+  Conn{..} <- askConn
   let client = Client { clientRef = connRef
                       , clientHostname = connHostname
                       , clientUser = newUnregisteredUser 
@@ -659,7 +659,7 @@ serverReply ref typ params = do
 -- | Make a new IRC message from the server.
 newServerMsg :: Monad m => RPL -> [String] -> IRC m Message
 newServerMsg cmd ps = do
-  hostname <- asks $ connServerName . snd
+  hostname <- askConnServerName
   return $ Message {
     msg_prefix = Just $ Server hostname
    ,msg_command = fromRPL cmd
@@ -689,7 +689,7 @@ newCmdMsg cmd ps = do
 
 -- | Get the current connection ref.
 getRef :: Monad m => IRC m Ref
-getRef = asks $ connRef . snd
+getRef = connRef <$> askConn
 
 -- Output functions
 
@@ -721,8 +721,28 @@ log line = do
 
 historyLog :: MonadProvider m => RPL -> [String] -> IRC m ()
 historyLog rpl params = do
+  chans <- configLogChans <$> askConfig
   withRegistered $ \RegUser{regUserUser=name} -> do
-    lift $ provideLogger name rpl params
+    let send = lift $ provideLogger name rpl params
+    case (rpl,params) of
+      (RPL_PRIVMSG,chan@('#':_):_)
+        | chan `elem` chans -> send
+        | otherwise         -> return ()
+      _                     -> send
+
+-- Asking functions
+
+askTime :: Monad m => IRC m UTCTime
+askTime = asks (\(time,_conn,_config) -> time)
+
+askConn :: Monad m => IRC m Conn
+askConn = asks (\(_time,conn,_config) -> conn)
+
+askConfig :: Monad m => IRC m Config
+askConfig = asks (\(_time,_conn,config) -> config)
+
+askConnServerName :: Monad m => IRC m String
+askConnServerName = connServerName <$> askConn
 
 -- Validation functions
 
