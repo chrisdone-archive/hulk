@@ -172,10 +172,10 @@ handleQuit quitType msg = do
  ref <- getRef
  nick <- getNick <$> getClientByRef ref
  (myChannels >>=) $ mapM_ $ \Channel{..} -> do
-   case find ((==nick).fst) (filter ((/=ref) . snd) nicks) of
-     Just{} -> return ()
-     Nothing -> do channelReply channelName RPL_QUIT [msg] ExcludeMe
-                   removeFromChan channelName
+   case length $ filter ((==nick).fst) (filter ((/=ref) . snd) nicks) of
+     1 -> channelReply channelName RPL_QUIT [msg] ExcludeMe
+     _ -> return ()
+   removeFromChan channelName
  modifyNicks $ filter ((/=ref) . snd)
  modifyClients $ M.delete ref
  notice msg
