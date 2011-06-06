@@ -9,6 +9,7 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Writer
 import           Data.Char
+import           Data.Function
 import           Data.List
 import           Data.List.Split
 import           Data.Map             (Map)
@@ -142,14 +143,14 @@ handleUser user realname = do
 handleNick :: MonadProvider m => String -> IRC m ()
 handleNick nick =
   withSentPass $
-    withValidNick nick $ \nick ->
-      ifUniqueNick nick $ do
+    withValidNick nick $ \nick -> do
+      -- ifUniqueNick nick $ do
         ref <- getRef
-        withRegistered $ \RegUser{regUserNick=nick} -> 
-          modifyNicks $ M.delete nick
-        withUnegistered $ \UnregUser{unregUserNick=nick} -> 
-          maybe (return ()) (modifyNicks . M.delete) nick
-        modifyNicks $ M.insert nick ref
+        -- withRegistered $ \RegUser{regUserNick=nick} -> 
+        --   modifyNicks $ M.delete nick
+        -- withUnegistered $ \UnregUser{unregUserNick=nick} -> 
+        --   maybe (return ()) (modifyNicks . M.delete) nick
+        modifyNicks $ ((nick,ref) :)
         modifyUnregistered $ \u -> u { unregUserNick = Just nick }
         tryRegister
         asRegistered $ do
@@ -167,17 +168,21 @@ handlePing p = do
 -- | Handle the QUIT message.
 handleQuit :: Monad m => QuitType -> String -> IRC m ()
 handleQuit quitType msg = do
- (myChannels >>=) $ mapM_ $ \Channel{..} -> do
-   channelReply channelName RPL_QUIT [msg] ExcludeMe
-   removeFromChan channelName
- withRegistered $ \RegUser{regUserNick=nick} -> do
-   modifyNicks $ M.delete nick
- withUnegistered $ \UnregUser{unregUserNick=nick} -> do
-   maybe (return ()) (modifyNicks . M.delete) nick
+ nicks <- gets envNicks
  ref <- getRef
+ nick <- getNick <$> getClientByRef ref
+ (myChannels >>=) $ mapM_ $ \Channel{..} -> do
+   case find ((==nick).fst) (filter ((/=ref) . snd) nicks) of
+     Just{} -> return ()
+     Nothing -> do channelReply channelName RPL_QUIT [msg] ExcludeMe
+                   removeFromChan channelName
+ modifyNicks $ filter ((/=ref) . snd)
  modifyClients $ M.delete ref
  notice msg
  when (quitType == RequestedQuit) $ tell [Close]
+
+  where getNick (Just (Client {clientUser=Registered (RegUser{..})})) = regUserNick
+        getNick _ = Nick ""
 
 -- | Handle the TELL message.
 handleTell :: Monad m => String -> String -> IRC m ()
@@ -245,7 +250,7 @@ handleWhoIs nick =
 handleIsOn :: Monad m => [String] -> IRC m ()
 handleIsOn (catMaybes . map readNick -> nicks) =
   asRegistered $ do
-    online <- catMaybes <$> mapM regUserByNick nicks
+    online <- concat <$> mapM regUsersByNick nicks
     let nicks = unwords $ map (unNick.regUserNick) online
     unless (null nicks) $ thisNickServerReply RPL_ISON [nicks ++ " "]
 
@@ -346,7 +351,7 @@ readNick n | validNick n = Just $ Nick n
            | otherwise   = Nothing
 
 -- | Modify the nicks mapping.
-modifyNicks :: Monad m => (Map Nick Ref -> Map Nick Ref) -> IRC m ()
+modifyNicks :: Monad m => ([(Nick,Ref)] -> [(Nick,Ref)]) -> IRC m ()
 modifyNicks f = modify $ \env -> env { envNicks = f (envNicks env) }
 
 -- | With a valid nickname, perform an action.
@@ -355,15 +360,15 @@ withValidNick nick m
     | validNick nick = m (Nick nick)
     | otherwise      = errorReply $ "Invalid nick format: " ++ nick
 
--- | Perform an action if a nickname is unique, otherwise send error.
-ifUniqueNick :: Monad m => Nick -> IRC m () -> IRC m ()
-ifUniqueNick nick m = do
-  clients <- gets envClients
-  client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
-  case client of
-    Nothing -> m
-    Just{}  -> thisServerReply ERR_NICKNAMEINUSE 
-                               [unNick nick,"Nick is already in use."]
+-- -- | Perform an action if a nickname is unique, otherwise send error.
+-- ifUniqueNick :: Monad m => Nick -> IRC m () -> IRC m ()
+-- ifUniqueNick nick m = do
+--   clients <- gets envClients
+--   client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
+--   case client of
+--     Nothing -> m
+--     Just{}  -> thisServerReply ERR_NICKNAMEINUSE 
+--                                [unNick nick,"Nick is already in use."]
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
 tryRegister :: MonadProvider m => IRC m ()
@@ -395,39 +400,44 @@ userReply nick typ ps =
 -- | Perform an action with a client by nickname.
 withClientByNick :: Monad m => Nick -> (Client -> IRC m ()) -> IRC m ()
 withClientByNick nick m = do
-    client <- clientByNick nick
+    client <- clientsByNick nick
     case client of
-      Nothing -> sendNoSuchNick nick
-      Just client@Client{..} 
-          | isRegistered clientUser -> m client
-          | otherwise -> sendNoSuchNick nick
+      [] -> sendNoSuchNick nick
+      clients -> forM_ clients $ \client@Client{..} ->
+          if isRegistered clientUser
+             then m client
+             else sendNoSuchNick nick
 
 -- | Perform an action with a registered user by its nickname.
 withRegUserByNick :: Monad m => Nick -> (RegUser -> IRC m ()) -> IRC m ()
 withRegUserByNick nick m = do
-  user <- regUserByNick nick
+  user <- regUsersByNick nick
   case user of
-    Just user -> m user
-    Nothing -> sendNoSuchNick nick
+    [] -> sendNoSuchNick nick
+    us -> mapM_ m us
     
 -- | Send the RPL_NOSUCHNICK reply.
 sendNoSuchNick :: Monad m => Nick -> IRC m ()
 sendNoSuchNick nick =
   thisServerReply ERR_NOSUCHNICK [unNick nick,"No such nick."]
 
--- | Get a registered user by nickname.
-regUserByNick :: Monad m => Nick -> IRC m (Maybe RegUser)
-regUserByNick nick = do
-  c <- clientByNick nick
-  case clientUser <$> c of
-    Just (Registered u) -> return $ Just u
-    _ -> return Nothing
+-- | Get registered users by nickname.
+regUsersByNick :: Monad m => Nick -> IRC m [RegUser]
+regUsersByNick nick = do
+  cs <- clientsByNick nick
+  return $ mapMaybe (getReg.clientUser) cs
+  where getReg (Registered u) = Just u
+        getReg _              = Nothing
 
--- | Get a client by nickname.
-clientByNick :: Monad m => Nick -> IRC m (Maybe Client)
-clientByNick nick = do
+-- | Get clients by nickname.
+clientsByNick :: Monad m => Nick -> IRC m [Client]
+clientsByNick nick = do
   clients <- gets envClients
-  (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
+  nicks <- gets envNicks
+  return $
+    mapMaybe ((`M.lookup` clients) . snd) $
+    filter ((==nick).fst) $
+    nicks
 
 -- | Maybe get a registered user from a client.
 clientRegUser :: Client -> Maybe RegUser

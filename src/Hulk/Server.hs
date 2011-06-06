@@ -25,7 +25,7 @@ start config = withSocketsDo $ do
   hSetBuffering stdout LineBuffering
   listenSock <- listenOn $ PortNumber (configListen config)
   envar <- newMVar Env { envClients = M.empty
-                       , envNicks = M.empty
+                       , envNicks = []
                        , envChannels = M.empty }
   forever $ do
     (handle,host,_port) <- accept listenSock

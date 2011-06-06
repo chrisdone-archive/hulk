@@ -43,7 +43,7 @@ data Error = Error String
 
 data Env = Env {
    envClients :: Map Ref Client
-  ,envNicks :: Map Nick Ref
+  ,envNicks :: [(Nick,Ref)]
   ,envChannels :: Map ChannelName Channel
 }
 
