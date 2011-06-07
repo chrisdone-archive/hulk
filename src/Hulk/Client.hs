@@ -172,7 +172,7 @@ handleQuit quitType msg = do
  ref <- getRef
  nick <- getNick <$> getClientByRef ref
  (myChannels >>=) $ mapM_ $ \Channel{..} -> do
-   case length $ filter ((==nick).fst) (filter ((/=ref) . snd) nicks) of
+   case length $ filter ((==nick).fst) nicks of
      1 -> channelReply channelName RPL_QUIT [msg] ExcludeMe
      _ -> return ()
    removeFromChan channelName
