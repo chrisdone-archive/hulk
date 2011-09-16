@@ -143,20 +143,30 @@ handleNick :: MonadProvider m => String -> IRC m ()
 handleNick nick =
   withSentPass $
     withValidNick nick $ \nick ->
-      ifUniqueNick nick $ do
-        ref <- getRef
-        withRegistered $ \RegUser{regUserNick=nick} -> 
-          modifyNicks $ M.delete nick
-        withUnegistered $ \UnregUser{unregUserNick=nick} -> 
-          maybe (return ()) (modifyNicks . M.delete) nick
-        modifyNicks $ M.insert nick ref
-        modifyUnregistered $ \u -> u { unregUserNick = Just nick }
-        tryRegister
-        asRegistered $ do
-          thisClientReply RPL_NICK [unNick nick]
-          (myChannels >>=) $ mapM_ $ \Channel{..} -> do
-            channelReply channelName RPL_NICK [unNick nick] ExcludeMe
-          modifyRegistered $ \u -> u { regUserNick = nick }
+      ifNotMyNick nick $
+        ifUniqueNick nick $ do
+          ref <- getRef
+          withRegistered $ \RegUser{regUserNick=nick} -> 
+            modifyNicks $ M.delete nick
+          withUnegistered $ \UnregUser{unregUserNick=nick} -> 
+            maybe (return ()) (modifyNicks . M.delete) nick
+          modifyNicks $ M.insert nick ref
+          modifyUnregistered $ \u -> u { unregUserNick = Just nick }
+          tryRegister
+          asRegistered $ do
+            thisClientReply RPL_NICK [unNick nick]
+            (myChannels >>=) $ mapM_ $ \Channel{..} -> do
+              channelReply channelName RPL_NICK [unNick nick] ExcludeMe
+            modifyRegistered $ \u -> u { regUserNick = nick }
+
+-- | If the given nick is not my nick name, ….
+ifNotMyNick :: MonadProvider m => Nick -> IRC m () -> IRC m ()
+ifNotMyNick nick m = do
+  user <- getUser
+  case user of
+    Registered RegUser{..}     | regUserNick /= nick -> m
+    Unregistered UnregUser{..} | unregUserNick /= Just nick -> m
+    _ -> return ()
 
 -- | Handle the PING message.
 handlePing :: Monad m => String -> IRC m ()
