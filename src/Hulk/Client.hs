@@ -166,17 +166,28 @@ handleNick nick =
         tryBumpingSomeoneElseOff nick = \error_reply -> do
           registered <- isRegistered <$> getUser
           if registered
-             then bumpAndRegister nick
+             then bumpAndRegister nick error_reply
              else do
                withUnregistered $ \unreg -> do
                  (authentic,_) <- isAuthentic unreg { unregUserNick = Just nick }
                  if not authentic
                     then error_reply " (Registration not valid, can't bump off this user.)"
-                    else bumpAndRegister nick
+                    else bumpAndRegister nick error_reply
 
-        bumpAndRegister nick = do
-          bumpOff nick
-          updateNickAndTryRegistration nick
+        bumpAndRegister nick@(Nick nickname) error_reply = do
+          username <- getUsername
+          if username == Just nickname
+             then do bumpOff nick
+                     updateNickAndTryRegistration nick
+             else error_reply " (Can only bump the nick that matches your username.)"
+
+getUsername :: (Functor m,Monad m) => IRC m (Maybe String)
+getUsername = do
+  user <- getUser
+  return $ case user of
+    Unregistered (UnregUser{unregUserName=username}) -> username
+    Registered (RegUser{regUserName=username})       -> Just username
+    
 
 -- | Bump off the given nick.
 bumpOff :: (Functor m,MonadProvider m) => Nick -> IRC m ()
