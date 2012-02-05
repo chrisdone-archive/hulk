@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards, ViewPatterns #-}
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
 module Hulk.Client 
@@ -144,7 +145,10 @@ handleNick nick =
   withSentPass $
     withValidNick nick $ \nick ->
       ifNotMyNick nick $
-        ifUniqueNick nick $ do
+        ifUniqueNick nick (updateNickAndTryRegistration nick)
+                          (Just (tryBumpingSomeoneElseOff nick))
+          
+  where updateNickAndTryRegistration nick = do
           ref <- getRef
           withRegistered $ \RegUser{regUserNick=nick} -> 
             modifyNicks $ M.delete nick
@@ -158,6 +162,26 @@ handleNick nick =
             (myChannels >>=) $ mapM_ $ \Channel{..} -> do
               channelReply channelName RPL_NICK [unNick nick] ExcludeMe
             modifyRegistered $ \u -> u { regUserNick = nick }
+        
+        tryBumpingSomeoneElseOff nick = \error_reply -> do
+          registered <- isRegistered <$> getUser
+          if not registered
+             then error_reply
+             else do bumpOff nick
+                     updateNickAndTryRegistration nick
+
+-- | Bump off the given nick.
+bumpOff :: (Functor m,MonadProvider m) => Nick -> IRC m ()
+bumpOff nick = ifNotMyNick nick $ do
+  reader <- ask
+  withClientByNick nick $ \Client{clientRef=ref} ->
+    local (const (makeFake reader ref)) $ do
+      clearQuittedUser msg
+      tell [Bump ref]
+
+  where msg = "Bumped off."
+        makeFake (time,conn,config) ref =
+          (time,conn { connRef = ref },config)
 
 -- | If the given nick is not my nick name, ….
 ifNotMyNick :: (Functor m, MonadProvider m) => Nick -> IRC m () -> IRC m ()
@@ -177,17 +201,20 @@ handlePing p = do
 -- | Handle the QUIT message.
 handleQuit :: (Functor m, Monad m) => QuitType -> String -> IRC m ()
 handleQuit quitType msg = do
- (myChannels >>=) $ mapM_ $ \Channel{..} -> do
-   channelReply channelName RPL_QUIT [msg] ExcludeMe
-   removeFromChan channelName
- withRegistered $ \RegUser{regUserNick=nick} -> do
-   modifyNicks $ M.delete nick
- withUnegistered $ \UnregUser{unregUserNick=nick} -> do
-   maybe (return ()) (modifyNicks . M.delete) nick
- ref <- getRef
- modifyClients $ M.delete ref
- notice msg
- when (quitType == RequestedQuit) $ tell [Close]
+  clearQuittedUser msg
+  when (quitType == RequestedQuit) $ tell [Close]
+
+clearQuittedUser msg = do
+  (myChannels >>=) $ mapM_ $ \Channel{..} -> do
+    channelReply channelName RPL_QUIT [msg] ExcludeMe
+    removeFromChan channelName
+  withRegistered $ \RegUser{regUserNick=nick} -> do
+    modifyNicks $ M.delete nick
+  withUnegistered $ \UnregUser{unregUserNick=nick} -> do
+    maybe (return ()) (modifyNicks . M.delete) nick
+  ref <- getRef
+  modifyClients $ M.delete ref
+  notice msg
 
 -- | Handle the TELL message.
 handleTell :: (Functor m, Monad m) => String -> String -> IRC m ()
@@ -366,14 +393,19 @@ withValidNick nick m
     | otherwise      = errorReply $ "Invalid nick format: " ++ nick
 
 -- | Perform an action if a nickname is unique, otherwise send error.
-ifUniqueNick :: (Functor m, Monad m) => Nick -> IRC m () -> IRC m ()
-ifUniqueNick nick m = do
+ifUniqueNick :: (Functor m, Monad m) => Nick -> IRC m () -> Maybe (IRC m () -> IRC m ()) -> IRC m ()
+ifUniqueNick nick then_m else_m = do
   clients <- gets envClients
   client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
   case client of
-    Nothing -> m
-    Just{}  -> thisServerReply ERR_NICKNAMEINUSE 
-                               [unNick nick,"Nick is already in use."]
+    Nothing -> then_m
+    Just{}  -> do
+      case else_m of
+        Just else_m -> else_m error_reply
+        Nothing -> error_reply
+        
+  where error_reply = thisServerReply ERR_NICKNAMEINUSE 
+                                      [unNick nick,"Nick is already in use."]
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
 tryRegister :: (Functor m, MonadProvider m) => IRC m ()

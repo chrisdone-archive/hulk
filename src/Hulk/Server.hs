@@ -80,6 +80,7 @@ handleReplies handle reply = do
     MessageReply ref msg -> sendMessage ref msg
     LogReply line -> logLine line
     Close -> hClose handle
+    Bump (Ref handle) -> hClose handle
 
 -- | Send a message to a client.
 sendMessage :: Ref -> Message -> IO ()

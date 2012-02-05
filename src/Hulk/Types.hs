@@ -111,7 +111,7 @@ data Conn = Conn {
   ,connTime       :: UTCTime
 } deriving Show
 
-data Reply = MessageReply Ref Message | LogReply String | Close
+data Reply = MessageReply Ref Message | LogReply String | Close | Bump Ref
 
 newtype IRC m a = IRC { 
     runIRC :: ReaderT (UTCTime,Conn,Config) (WriterT [Reply] (StateT Env m)) a
