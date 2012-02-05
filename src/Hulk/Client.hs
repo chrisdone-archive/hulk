@@ -152,7 +152,7 @@ handleNick nick =
           ref <- getRef
           withRegistered $ \RegUser{regUserNick=nick} -> 
             modifyNicks $ M.delete nick
-          withUnegistered $ \UnregUser{unregUserNick=nick} -> 
+          withUnregistered $ \UnregUser{unregUserNick=nick} -> 
             maybe (return ()) (modifyNicks . M.delete) nick
           modifyNicks $ M.insert nick ref
           modifyUnregistered $ \u -> u { unregUserNick = Just nick }
@@ -165,14 +165,23 @@ handleNick nick =
         
         tryBumpingSomeoneElseOff nick = \error_reply -> do
           registered <- isRegistered <$> getUser
-          if not registered
-             then error_reply
-             else do bumpOff nick
-                     updateNickAndTryRegistration nick
+          if registered
+             then bumpAndRegister nick
+             else do
+               withUnregistered $ \unreg -> do
+                 (authentic,_) <- isAuthentic unreg { unregUserNick = Just nick }
+                 if not authentic
+                    then error_reply " (Registration not valid, can't bump off this user.)"
+                    else bumpAndRegister nick
+
+        bumpAndRegister nick = do
+          bumpOff nick
+          updateNickAndTryRegistration nick
 
 -- | Bump off the given nick.
 bumpOff :: (Functor m,MonadProvider m) => Nick -> IRC m ()
-bumpOff nick = ifNotMyNick nick $ do
+bumpOff nick@(Nick nickstr) = ifNotMyNick nick $ do
+  notice $ "Bumping off user " ++ nickstr ++ "…"
   reader <- ask
   withClientByNick nick $ \Client{clientRef=ref} ->
     local (const (makeFake reader ref)) $ do
@@ -204,13 +213,14 @@ handleQuit quitType msg = do
   clearQuittedUser msg
   when (quitType == RequestedQuit) $ tell [Close]
 
+clearQuittedUser :: (Functor m,Monad m) => String -> IRC m ()
 clearQuittedUser msg = do
   (myChannels >>=) $ mapM_ $ \Channel{..} -> do
     channelReply channelName RPL_QUIT [msg] ExcludeMe
     removeFromChan channelName
   withRegistered $ \RegUser{regUserNick=nick} -> do
     modifyNicks $ M.delete nick
-  withUnegistered $ \UnregUser{unregUserNick=nick} -> do
+  withUnregistered $ \UnregUser{unregUserNick=nick} -> do
     maybe (return ()) (modifyNicks . M.delete) nick
   ref <- getRef
   modifyClients $ M.delete ref
@@ -393,7 +403,7 @@ withValidNick nick m
     | otherwise      = errorReply $ "Invalid nick format: " ++ nick
 
 -- | Perform an action if a nickname is unique, otherwise send error.
-ifUniqueNick :: (Functor m, Monad m) => Nick -> IRC m () -> Maybe (IRC m () -> IRC m ()) -> IRC m ()
+ifUniqueNick :: (Functor m, Monad m) => Nick -> IRC m () -> Maybe ((String -> IRC m ()) -> IRC m ()) -> IRC m ()
 ifUniqueNick nick then_m else_m = do
   clients <- gets envClients
   client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
@@ -402,30 +412,37 @@ ifUniqueNick nick then_m else_m = do
     Just{}  -> do
       case else_m of
         Just else_m -> else_m error_reply
-        Nothing -> error_reply
+        Nothing -> error_reply ""
         
-  where error_reply = thisServerReply ERR_NICKNAMEINUSE 
-                                      [unNick nick,"Nick is already in use."]
+  where error_reply x = thisServerReply ERR_NICKNAMEINUSE 
+                                      [unNick nick,"Nick is already in use." ++ x]
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
 tryRegister :: (Functor m, MonadProvider m) => IRC m ()
 tryRegister =
-  withUnegistered $ \UnregUser{..} -> do
-    let details = (,,,) <$> unregUserName
-                        <*> unregUserNick
-                        <*> unregUserUser
-                        <*> unregUserPass
-    case details of
-      Nothing -> return ()
-      Just (name,nick,user,pass) -> do
-        authentic <- lift $ authenticate user pass
-        if not authentic
-           then errorReply $ "Wrong user/pass."
-           else do modifyUser $ \_ ->
-                     Registered $ RegUser name nick user pass
-                   sendWelcome
-                   sendMotd
-                   sendEvents
+  withUnregistered $ \unreg -> do
+    check <- isAuthentic unreg
+    case check of
+      (True,Just (name,user,nick)) -> do
+        modifyUser $ \_ ->
+          Registered $ RegUser name nick user ""
+        sendWelcome
+        sendMotd
+        sendEvents
+      (False,Just{}) -> errorReply $ "Wrong user/pass."
+      _ -> return ()
+
+isAuthentic :: MonadProvider m => UnregUser -> IRC m (Bool,Maybe (String,String,Nick))
+isAuthentic UnregUser{..} = do
+  let details = (,,,) <$> unregUserName
+                      <*> unregUserNick
+                      <*> unregUserUser
+                      <*> unregUserPass
+  case details of
+    Nothing -> return (False,Nothing)
+    Just (name,nick,user,pass) -> do
+      authentic <- lift $ authenticate user pass
+      return (authentic,Just (name,user,nick))
 
 -- | Send a client reply to a user.
 userReply :: (Functor m, Monad m) => String -> RPL -> [String] -> IRC m ()
@@ -520,14 +537,14 @@ withRegistered m = do
 withSentPass :: (Functor m, Monad m) => IRC m () -> IRC m ()
 withSentPass m = do
   asRegistered m
-  withUnegistered $ \UnregUser{..} -> do
+  withUnregistered $ \UnregUser{..} -> do
     case unregUserPass of
       Just{} -> m
       Nothing -> return ()
 
 -- | Perform command with a registered user.
-withUnegistered :: (Functor m, Monad m) => (UnregUser -> IRC m ()) -> IRC m ()
-withUnegistered m = do
+withUnregistered :: (Functor m, Monad m) => (UnregUser -> IRC m ()) -> IRC m ()
+withUnregistered m = do
   user <- getUser
   case user of
     Unregistered user -> m user
