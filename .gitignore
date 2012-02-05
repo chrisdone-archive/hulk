@@ -7,3 +7,4 @@ cabal-dev
 src/TAGS
 src/tags
 hulk.conf
+users/

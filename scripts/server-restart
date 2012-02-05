@@ -1,0 +1,4 @@
+#! /bin/bash
+killall hulk -w
+dist/build/hulk/hulk -chulk.conf & disown
+echo 'Restarted.'
