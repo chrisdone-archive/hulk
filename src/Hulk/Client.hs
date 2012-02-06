@@ -187,9 +187,8 @@ getUsername :: (Functor m,Monad m) => IRC m (Maybe String)
 getUsername = do
   user <- getUser
   return $ case user of
-    Unregistered (UnregUser{unregUserName=username}) -> username
-    Registered (RegUser{regUserName=username})       -> Just username
-    
+    Unregistered (UnregUser{unregUserUser=username}) -> username
+    Registered (RegUser{regUserUser=username})       -> Just username
 
 -- | Bump off the given nick.
 bumpOff :: (Functor m,MonadProvider m) => Nick -> IRC m ()
