@@ -179,7 +179,9 @@ handleNick nick =
           if username == Just nickname
              then do bumpOff nick
                      updateNickAndTryRegistration nick
-             else error_reply " (Can only bump the nick that matches your username.)"
+             else error_reply $
+               let x = "username=" ++ show username ++ ",nick=" ++ show nickname
+               in " (Can only bump the nick that matches your username. Debug: " ++ x ++ ")"
 
 getUsername :: (Functor m,Monad m) => IRC m (Maybe String)
 getUsername = do
