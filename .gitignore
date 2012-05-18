@@ -8,3 +8,5 @@ src/TAGS
 src/tags
 hulk.conf
 users/
+logs/
+*~
