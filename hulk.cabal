@@ -22,22 +22,22 @@ Executable hulk
   Ghc-options:       -threaded
   Hs-Source-Dirs:    src
   Build-depends:     base >= 4 && <5
-                    ,cmdargs >= 0.6 && <0.7
+                    ,cmdargs >= 0.6 && <0.10
                     ,network >= 2.2 && < 2.4
-                    ,ConfigFile >= 1.0 && < 1.1
-                    ,unix >= 2.4 && < 2.5
-                    ,mtl >= 1.1 && < 1.2
-                    ,containers >= 0.3 && < 0.4
-                    ,irc >= 0.4 && < 0.5
+                    ,ConfigFile >= 1.0 && < 1.2
+                    ,unix >= 2.4 && < 2.6
+                    ,mtl >= 1.1 && < 2.1
+                    ,containers >= 0.3 && < 0.5
+                    ,irc >= 0.4 && < 0.6
                     ,split >= 0.1 && < 0.2
                     ,utf8-string >= 0.3 && < 0.4
                     ,Crypto>=4.2 && < 4.3
-                    ,time >= 1.1 && < 1.2
-                    ,json >= 0.4 && < 0.5
+                    ,time >= 1.1 && < 1.5
+                    ,json >= 0.4 && < 0.6
                     ,old-locale >= 1.0 && <1.1
-                    ,old-time >= 1.0 && <1.1
-                    ,directory >= 1.0 && < 1.1
-                    ,filepath >= 1.1 && < 1.2
+                    ,old-time >= 1.0 && <1.2
+                    ,directory >= 1.0 && < 1.2
+                    ,filepath >= 1.1 && < 1.4
                     ,strict >= 0.3 && < 0.4
 
 Executable hulk-generate-pass
@@ -49,13 +49,13 @@ Executable hulk-generate-pass
                      Hulk.Server, Hulk.Types
   Hs-Source-Dirs:   src
   Build-depends:    base >= 4 && <5
-                    ,cmdargs >= 0.6 && <0.7
+                    ,cmdargs >= 0.6 && <0.10
                     ,network >= 2.2 && < 2.4
-                    ,ConfigFile >= 1.0 && < 1.1
-                    ,unix >= 2.4 && < 2.5
-                    ,mtl >= 1.1 && < 1.2
-                    ,containers >= 0.3 && < 0.4
-                    ,irc >= 0.4 && < 0.5
+                    ,ConfigFile >= 1.0 && < 1.2
+                    ,unix >= 2.4 && < 2.6
+                    ,mtl >= 1.1 && < 2.1
+                    ,containers >= 0.3 && < 0.5
+                    ,irc >= 0.4 && < 0.6
                     ,split >= 0.1 && < 0.2
                     ,utf8-string >= 0.3 && <0.4
                     ,Crypto>=4.2 && <4.3
