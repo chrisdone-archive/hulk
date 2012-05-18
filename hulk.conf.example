@@ -9,3 +9,10 @@ preface_file = txt/PREFACE
 [AUTH]
 passwd_file = auth/passwd
 passwd_key = auth/passwd-key
+
+[USERS]
+data_dir=users/
+
+[LOGS]
+event_log=logs/
+channels=channel1 channel2
