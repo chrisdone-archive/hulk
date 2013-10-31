@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards, ViewPatterns #-}
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
-module Hulk.Client 
+module Hulk.Client
     (handleLine)
     where
 
@@ -15,6 +15,7 @@ import           Data.List.Split
 import           Data.Map             (Map)
 import qualified Data.Map             as M
 import           Data.Maybe
+import qualified Data.Set as S
 import           Data.Time
 import           Data.Time.JSON
 import           Network.IRC          hiding (Channel)
@@ -28,20 +29,20 @@ import           Hulk.Types
 
 -- | Handle an incoming line, try to parse it and handle the message.
 handleLine :: (Functor m, MonadProvider m)
-              => Config -> Env -> UTCTime -> Conn -> String 
+              => Config -> Env -> UTCTime -> Conn -> String
               -> m ([Reply],Env)
 handleLine config env now conn line = runClient config env now conn $
   case decode line of
     Just Message{..} -> handleMsg line (readEventType msg_command,msg_params)
     Nothing  -> errorReply $ "Unable to parse " ++ show line
 
--- | Run the client monad.    
-runClient :: (Functor m, MonadProvider m) 
-          => Config -> Env -> UTCTime -> Conn -> IRC m () 
+-- | Run the client monad.
+runClient :: (Functor m, MonadProvider m)
+          => Config -> Env -> UTCTime -> Conn -> IRC m ()
           -> m ([Reply],Env)
 runClient config env now conn m = do
-  flip runStateT env $ 
-    execWriterT $ 
+  flip runStateT env $
+    execWriterT $
       flip runReaderT (now,conn,config) $
         runIRC m
 
@@ -50,12 +51,12 @@ handleMsg :: (Functor m, MonadProvider m) => String -> (Event,[String]) -> IRC m
 handleMsg line msg = do
   case msg of
     (NOTHING,_)   -> invalidMessage line
-    (PASS,[pass]) -> asUnregistered $ handlePass pass
+    (PASS,[pass]) -> do incoming line; asUnregistered $ handlePass pass
     (PINGPONG,_)  -> do incoming line; handlePingPong
     safeToLog     -> handleMsgSafeToLog line safeToLog
-    
+
 -- | Handle messages that are safe to log.
-handleMsgSafeToLog :: (Functor m, MonadProvider m) => String -> (Event,[String]) 
+handleMsgSafeToLog :: (Functor m, MonadProvider m) => String -> (Event,[String])
                    -> IRC m ()
 handleMsgSafeToLog line safeToLog = do
   incoming line
@@ -66,6 +67,7 @@ handleMsgSafeToLog line safeToLog = do
     (NICK,[nick])   -> handleNick nick
     (PING,[param])  -> handlePing param
     (QUIT,[msg])    -> handleQuit RequestedQuit msg
+    (QUIT,_)        -> handleQuit RequestedQuit "Disconnected (no message given)"
     (TELL,[to,msg]) -> handleTell to msg
     (DISCONNECT,[msg]) -> handleQuit SocketQuit msg
     (CONNECT,_)        -> handleConnect
@@ -83,13 +85,14 @@ handleMsgReg'd line mustBeReg'd =
      (NOTICE,[to,msg])  -> handleNotice to msg
      (WHOIS,(nick:_))   -> handleWhoIs nick
      (ISON,people)      -> handleIsOn people
+     (NAMES,[chan])     -> handleNames chan
      _                  -> invalidMessage line
 
 -- | Log an invalid message.
 invalidMessage :: (Functor m, Monad m) => String -> IRC m ()
 invalidMessage line = do
     incoming line
-    errorReply $ "Invalid or unknown message type, or not" ++ 
+    errorReply $ "Invalid or unknown message type, or not" ++
                  " enough parameters: " ++ show line
 
 -- Message handlers
@@ -147,12 +150,12 @@ handleNick nick =
       ifNotMyNick nick $
         ifUniqueNick nick (updateNickAndTryRegistration nick)
                           (Just (tryBumpingSomeoneElseOff nick))
-          
+
   where updateNickAndTryRegistration nick = do
           ref <- getRef
-          withRegistered $ \RegUser{regUserNick=nick} -> 
+          withRegistered $ \RegUser{regUserNick=nick} ->
             modifyNicks $ M.delete nick
-          withUnregistered $ \UnregUser{unregUserNick=nick} -> 
+          withUnregistered $ \UnregUser{unregUserNick=nick} ->
             maybe (return ()) (modifyNicks . M.delete) nick
           modifyNicks $ M.insert nick ref
           modifyUnregistered $ \u -> u { unregUserNick = Just nick }
@@ -162,7 +165,7 @@ handleNick nick =
             (myChannels >>=) $ mapM_ $ \Channel{..} -> do
               channelReply channelName RPL_NICK [unNick nick] ExcludeMe
             modifyRegistered $ \u -> u { regUserNick = nick }
-        
+
         tryBumpingSomeoneElseOff nick = \error_reply -> do
           registered <- isRegistered <$> getUser
           if registered
@@ -242,6 +245,11 @@ clearQuittedUser msg = do
 handleTell :: (Functor m, Monad m) => String -> String -> IRC m ()
 handleTell name msg = sendMsgTo RPL_NOTICE name msg
 
+-- | Send the NAMES list of a channel.
+handleNames :: (Functor m,Monad m) => String -> IRC m ()
+handleNames chan = do
+  withValidChanName chan sendNamesList
+
 -- | Handle the JOIN message.
 handleJoin :: (Functor m, Monad m) => String -> IRC m ()
 handleJoin chans = do
@@ -263,7 +271,7 @@ handlePart name msg =
 removeFromChan :: (Functor m, Monad m) => ChannelName -> IRC m ()
 removeFromChan name = do
   ref <- getRef
-  let remMe c = c { channelUsers = filter (/=ref) (channelUsers c) }
+  let remMe c = c { channelUsers = S.delete ref (channelUsers c) }
   modifyChannels $ M.adjust remMe name
 
 -- | Handle the TOPIC message.
@@ -290,7 +298,7 @@ handleWhoIs nick =
   withValidNick nick $ \nick ->
     withClientByNick nick $ \Client{..} ->
       withRegUserByNick nick $ \RegUser{..} -> do
-        thisNickServerReply RPL_WHOISUSER 
+        thisNickServerReply RPL_WHOISUSER
                             [unNick regUserNick
                             ,regUserUser
                             ,clientHostname
@@ -314,7 +322,7 @@ handleIsOn (catMaybes . map readNick -> nicks) =
 sendMsgTo :: (Functor m, Monad m) => RPL -> String -> String -> IRC m ()
 sendMsgTo typ name msg =
   if validChannel name
-     then withValidChanName name $ \name -> 
+     then withValidChanName name $ \name ->
             channelReply name typ [unChanName name,msg] ExcludeMe
      else userReply name typ [name,msg]
 
@@ -324,13 +332,13 @@ sendMsgTo typ name msg =
 myChannels :: (Functor m, Monad m) => IRC m [Channel]
 myChannels = do
   ref <- getRef
-  filter (elem ref . channelUsers) . map snd . M.toList <$> gets envChannels
+  filter (S.member ref . channelUsers) . map snd . M.toList <$> gets envChannels
 
 -- | Join a channel.
 joinChannel :: (Functor m, Monad m) => ChannelName -> IRC m ()
 joinChannel name = do
   ref <- getRef
-  let addMe c = c { channelUsers = channelUsers c ++ [ref] }
+  let addMe c = c { channelUsers = S.insert ref (channelUsers c) }
   modifyChannels $ M.adjust addMe name
   channelReply name RPL_JOIN [unChanName name] IncludeMe
   sendNamesList name
@@ -344,7 +352,7 @@ sendNamesList :: (Functor m, Monad m) => ChannelName -> IRC m ()
 sendNamesList name = do
   asRegistered $
     withChannel name $ \Channel{..} -> do
-      clients <- catMaybes <$> mapM getClientByRef channelUsers
+      clients <- catMaybes <$> mapM getClientByRef (S.toList channelUsers)
       let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
       forM_ (splitEvery 10 nicks) $ \nicks ->
         thisNickServerReply RPL_NAMEREPLY ["@",unChanName name
@@ -358,19 +366,19 @@ inChannel name = do
   chan <- M.lookup name <$> gets envChannels
   case chan of
     Nothing -> return False
-    Just Channel{..} -> (`elem` channelUsers) <$> getRef
+    Just Channel{..} -> (`S.member` channelUsers) <$> getRef
 
 -- | Insert a new channel.
 insertChannel :: (Functor m, Monad m) => ChannelName -> IRC m ()
 insertChannel name = modifyChannels $ M.insert name newChan where
   newChan = Channel { channelName  = name
                     , channelTopic = Nothing
-                    , channelUsers = []
+                    , channelUsers = S.empty
                     }
 
 -- | Modify the channel map.
-modifyChannels :: (Functor m, Monad m) 
-               => (Map ChannelName Channel -> Map ChannelName Channel) 
+modifyChannels :: (Functor m, Monad m)
+               => (Map ChannelName Channel -> Map ChannelName Channel)
                -> IRC m ()
 modifyChannels f = modify $ \e -> e { envChannels = f (envChannels e) }
 
@@ -382,10 +390,10 @@ withChannel name m = do
     Nothing -> thisServerReply ERR_NOSUCHCHANNEL [unChanName name
                                                  ,"No such channel."]
     Just chan -> m chan
-    
-withValidChanName :: (Functor m, Monad m) => String -> (ChannelName -> IRC m ()) 
+
+withValidChanName :: (Functor m, Monad m) => String -> (ChannelName -> IRC m ())
                   -> IRC m ()
-withValidChanName name m 
+withValidChanName name m
     | validChannel name = m $ ChannelName name
     | otherwise         = errorReply $ "Invalid channel name: " ++ name
 
@@ -425,8 +433,8 @@ ifUniqueNick nick then_m else_m = do
       case else_m of
         Just else_m -> else_m error_reply
         Nothing -> error_reply ""
-        
-  where error_reply x = thisServerReply ERR_NICKNAMEINUSE 
+
+  where error_reply x = thisServerReply ERR_NICKNAMEINUSE
                                       [unNick nick,"Nick is already in use." ++ x]
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
@@ -458,7 +466,7 @@ isAuthentic UnregUser{..} = do
 
 -- | Send a client reply to a user.
 userReply :: (Functor m, Monad m) => String -> RPL -> [String] -> IRC m ()
-userReply nick typ ps = 
+userReply nick typ ps =
   withValidNick nick $ \nick ->
     withClientByNick nick $ \Client{..} ->
       clientReply clientRef typ ps
@@ -469,7 +477,7 @@ withClientByNick nick m = do
     client <- clientByNick nick
     case client of
       Nothing -> sendNoSuchNick nick
-      Just client@Client{..} 
+      Just client@Client{..}
           | isRegistered clientUser -> m client
           | otherwise -> sendNoSuchNick nick
 
@@ -480,7 +488,7 @@ withRegUserByNick nick m = do
   case user of
     Just user -> m user
     Nothing -> sendNoSuchNick nick
-    
+
 -- | Send the RPL_NOSUCHNICK reply.
 sendNoSuchNick :: (Functor m, Monad m) => Nick -> IRC m ()
 sendNoSuchNick nick =
@@ -502,15 +510,15 @@ clientByNick nick = do
 
 -- | Maybe get a registered user from a client.
 clientRegUser :: Client -> Maybe RegUser
-clientRegUser Client{..} = 
+clientRegUser Client{..} =
     case clientUser of
       Registered u -> Just u
       _ -> Nothing
-  
+
 -- | Modify the current user if unregistered.
 modifyUnregistered :: (Functor m, Monad m) => (UnregUser -> UnregUser) -> IRC m ()
 modifyUnregistered f = do
-  modifyUser $ \user -> 
+  modifyUser $ \user ->
       case user of
         Unregistered user -> Unregistered (f user)
         u -> u
@@ -518,7 +526,7 @@ modifyUnregistered f = do
 -- | Modify the current user if registered.
 modifyRegistered :: (Functor m, Monad m) => (RegUser -> RegUser) -> IRC m ()
 modifyRegistered f = do
-  modifyUser $ \user -> 
+  modifyUser $ \user ->
       case user of
         Registered user -> Registered (f user)
         u -> u
@@ -544,7 +552,7 @@ withRegistered m = do
   case user of
     Registered user -> m user
     _ -> return ()
-    
+
 -- | With sent pass.
 withSentPass :: (Functor m, Monad m) => IRC m () -> IRC m ()
 withSentPass m = do
@@ -591,7 +599,7 @@ getClient = do
   case M.lookup ref clients of
     Just client -> return $ client
     Nothing -> makeNewClient
-    
+
 -- | Modify the clients table.
 modifyClients :: (Functor m, Monad m) => (Map Ref Client -> Map Ref Client) -> IRC m ()
 modifyClients f = modify $ \env -> env { envClients = f (envClients env) }
@@ -602,7 +610,7 @@ makeNewClient = do
   Conn{..} <- askConn
   let client = Client { clientRef = connRef
                       , clientHostname = connHostname
-                      , clientUser = newUnregisteredUser 
+                      , clientUser = newUnregisteredUser
                       , clientLastPong = connTime }
   modifyClients $ M.insert connRef client
   return client
@@ -619,14 +627,14 @@ newUnregisteredUser = Unregistered $ UnregUser {
 -- Channel replies
 
 -- | Send a client reply to everyone in a channel.
-channelReply :: (Functor m, Monad m) => ChannelName -> RPL -> [String] 
+channelReply :: (Functor m, Monad m) => ChannelName -> RPL -> [String]
              -> ChannelReplyType
              -> IRC m ()
 channelReply name cmd params typ = do
   withChannel name $ \Channel{..} -> do
     ref <- getRef
-    forM_ channelUsers $ \theirRef -> do
-      unless (typ == ExcludeMe && ref == theirRef) $ 
+    forM_ (S.toList channelUsers) $ \theirRef -> do
+      unless (typ == ExcludeMe && ref == theirRef) $
         clientReply theirRef cmd params
 
 -- Client replies
@@ -647,7 +655,7 @@ clientReply ref typ params = do
     reply ref msg
 
 -- | Make a new IRC message from the current client.
-newClientMsg :: (Functor m, Monad m) => Client -> RegUser -> RPL -> [String] 
+newClientMsg :: (Functor m, Monad m) => Client -> RegUser -> RPL -> [String]
              -> IRC m Message
 newClientMsg Client{..} RegUser{..} cmd ps = do
   let nickName = NickName (unNick regUserNick)
@@ -667,7 +675,7 @@ sendWelcome = do
   withRegistered $ \RegUser{..} -> do
     thisNickServerReply RPL_WELCOME ["Welcome."]
 
--- | Send the MOTD.    
+-- | Send the MOTD.
 sendMotd :: (Functor m, MonadProvider m) => IRC m ()
 sendMotd = do
   asRegistered $ do
@@ -736,7 +744,7 @@ newServerMsg cmd ps = do
    ,msg_command = fromRPL cmd
    ,msg_params = ps
   }
-  
+
 -- | Send a cmd reply of the given type with the given params.
 thisCmdReply :: (Functor m, Monad m) => RPL -> [String] -> IRC m ()
 thisCmdReply typ params = do

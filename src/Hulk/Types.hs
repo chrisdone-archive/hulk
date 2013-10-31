@@ -10,6 +10,7 @@ import Control.Monad.Writer
 import Data.Char
 import Data.Function
 import Data.Map               (Map)
+import Data.Set               (Set)
 import Data.Time
 import Data.Time.JSON
 import Network
@@ -29,7 +30,7 @@ data Config = Config {
     , configLogChans :: [String]
     } deriving (Show)
 
-newtype Ref = Ref { unRef :: Handle } 
+newtype Ref = Ref { unRef :: Handle }
     deriving (Show,Eq)
 
 instance Ord Ref where
@@ -68,7 +69,7 @@ instance Eq Nick where
   (==) = on (==) (map toLower . unNick)
 
 newtype ChannelName = ChannelName { unChanName :: String } deriving Show
-  
+
 instance Ord ChannelName where
   compare = on compare (map toLower . unChanName)
 instance Eq ChannelName where
@@ -77,7 +78,7 @@ instance Eq ChannelName where
 data Channel = Channel {
       channelName :: ChannelName
     , channelTopic :: Maybe String
-    , channelUsers :: [Ref]
+    , channelUsers :: Set Ref
 } deriving Show
 
 data User = Unregistered UnregUser | Registered RegUser
@@ -113,7 +114,7 @@ data Conn = Conn {
 
 data Reply = MessageReply Ref Message | LogReply String | Close | Bump Ref
 
-newtype IRC m a = IRC { 
+newtype IRC m a = IRC {
     runIRC :: ReaderT (UTCTime,Conn,Config) (WriterT [Reply] (StateT Env m)) a
   }
   deriving (Monad
@@ -124,7 +125,7 @@ newtype IRC m a = IRC {
 
 data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
            | NOTICE | ISON | WHOIS | TOPIC | CONNECT | DISCONNECT | PINGPONG
-           | PONG
+           | PONG | NAMES
            | NOTHING
   deriving (Read,Show)
 

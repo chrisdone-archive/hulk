@@ -10,3 +10,4 @@ hulk.conf
 users/
 logs/
 *~
+.hsenv/
