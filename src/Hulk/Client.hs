@@ -689,30 +689,32 @@ sendMotd = do
 
 sendEvents :: (Functor m, MonadProvider m) => IRC m ()
 sendEvents = do
-  withRegistered $ \RegUser{regUserUser=user} -> do
-    events <- lift provideLog
-    UserData{userDataLastSeen=DateTime lastSeen} <- lift $ provideUser user
-    let filtered = flip filter events $ \(DateTime time,_from,_typ,_params) ->
-                    time >. lastSeen
-    ref <- getRef
-    forM_ filtered $ \msg -> do
-      case msg of
-        (time,from',rpl@RPL_PRIVMSG,[name,msg])
-          | name == user || "#" `isPrefixOf` name -> do
-          when ("#" `isPrefixOf` name) $ do
-            handleJoin name
-          let from = filter (\c -> isDigit c || isLetter c) from'
-              nickName = NickName from
-                                  (Just from)
-                                  (Just "offline")
-          reply ref $ Message {
-                        msg_prefix = Just $ nickName
-                       ,msg_command = fromRPL rpl
-                       ,msg_params = [name,"[" ++ show time ++ "] " ++ msg]
-                       }
-        _ -> return ()
+  chans <- configLogChans <$> askConfig
+  unless (null chans) $ do
+    withRegistered $ \RegUser{regUserUser=user} -> do
+      events <- lift provideLog
+      UserData{userDataLastSeen=DateTime lastSeen} <- lift $ provideUser user
+      let filtered = flip filter events $ \(DateTime time,_from,_typ,_params) ->
+                      time >. lastSeen
+      ref <- getRef
+      forM_ filtered $ \msg -> do
+        case msg of
+          (time,from',rpl@RPL_PRIVMSG,[name,msg])
+            | name == user || "#" `isPrefixOf` name -> do
+            when ("#" `isPrefixOf` name) $ do
+              handleJoin name
+            let from = filter (\c -> isDigit c || isLetter c) from'
+                nickName = NickName from
+                                    (Just from)
+                                    (Just "offline")
+            reply ref $ Message {
+                          msg_prefix = Just $ nickName
+                         ,msg_command = fromRPL rpl
+                         ,msg_params = [name,"[" ++ show time ++ "] " ++ msg]
+                         }
+          _ -> return ()
 
-     where x >. y = x `diffUTCTime` y > 0
+  where x >. y = x `diffUTCTime` y > 0
 
 -- | Send a message reply.
 notice :: (Functor m, Monad m) => String -> IRC m ()
@@ -801,13 +803,14 @@ log line = do
 historyLog :: (Functor m, MonadProvider m) => RPL -> [String] -> IRC m ()
 historyLog rpl params = do
   chans <- configLogChans <$> askConfig
-  withRegistered $ \RegUser{regUserUser=name} -> do
-    let send = lift $ provideLogger name rpl params
-    case (rpl,params) of
-      (RPL_PRIVMSG,chan@('#':_):_)
-        | chan `elem` chans -> send
-        | otherwise         -> return ()
-      _                     -> send
+  unless (null chans) $ do
+    withRegistered $ \RegUser{regUserUser=name} -> do
+      let send = lift $ provideLogger name rpl params
+      case (rpl,params) of
+        (RPL_PRIVMSG,chan@('#':_):_)
+          | chan `elem` chans -> send
+          | otherwise         -> return ()
+        _                     -> send
 
 -- Asking functions
 
