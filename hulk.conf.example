@@ -14,5 +14,5 @@ passwd_key = auth/passwd-key
 data_dir=users/
 
 [LOGS]
-event_log=logs/
+event_log=event-log
 channels=channel1 channel2
