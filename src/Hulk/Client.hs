@@ -1,9 +1,17 @@
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE RecordWildCards, ViewPatterns #-}
-{-# OPTIONS -Wall -fno-warn-name-shadowing #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+-- | This module communicates and manages the state of clients
+-- connected to the server.
+
 module Hulk.Client
     (handleLine)
     where
+
+import           Hulk.Auth
+import           Hulk.Event
+import           Hulk.Types
 
 import           Control.Applicative
 import           Control.Monad.Reader
@@ -16,25 +24,23 @@ import           Data.Map             (Map)
 import qualified Data.Map             as M
 import           Data.Maybe
 import qualified Data.Set as S
+import           Data.Text (Text,pack,unpack)
+import qualified Data.Text as T
 import           Data.Time
 import           Data.Time.JSON
 import           Network.IRC          hiding (Channel)
 import           Prelude              hiding (log)
 
-import           Hulk.Auth
-import           Hulk.Event
-import           Hulk.Types
-
 -- Entry point handler
 
 -- | Handle an incoming line, try to parse it and handle the message.
 handleLine :: (Functor m, MonadProvider m)
-              => Config -> Env -> UTCTime -> Conn -> String
+              => Config -> Env -> UTCTime -> Conn -> Text
               -> m ([Reply],Env)
 handleLine config env now conn line = runClient config env now conn $
-  case decode line of
-    Just Message{..} -> handleMsg line (readEventType msg_command,msg_params)
-    Nothing  -> errorReply $ "Unable to parse " ++ show line
+  case decode (unpack line) of
+    Just Message{..} -> handleMsg line (readEventType msg_command,map pack msg_params)
+    Nothing  -> errorReply $ "Unable to parse " <> pack (show line)
 
 -- | Run the client monad.
 runClient :: (Functor m, MonadProvider m)
@@ -47,7 +53,7 @@ runClient config env now conn m = do
         runIRC m
 
 -- | Handle an incoming message.
-handleMsg :: (Functor m, MonadProvider m) => String -> (Event,[String]) -> IRC m ()
+handleMsg :: (Functor m, MonadProvider m) => Text -> (Event,[Text]) -> IRC m ()
 handleMsg line msg = do
   case msg of
     (NOTHING,_)   -> invalidMessage line
@@ -56,7 +62,7 @@ handleMsg line msg = do
     safeToLog     -> handleMsgSafeToLog line safeToLog
 
 -- | Handle messages that are safe to log.
-handleMsgSafeToLog :: (Functor m, MonadProvider m) => String -> (Event,[String])
+handleMsgSafeToLog :: (Functor m, MonadProvider m) => Text -> (Event,[Text])
                    -> IRC m ()
 handleMsgSafeToLog line safeToLog = do
   incoming line
@@ -74,7 +80,7 @@ handleMsgSafeToLog line safeToLog = do
     mustBeReg'd -> handleMsgReg'd line mustBeReg'd
 
 -- | Handle messages that can only be used when registered.
-handleMsgReg'd :: (Functor m, MonadProvider m) => String -> (Event,[String]) -> IRC m ()
+handleMsgReg'd :: (Functor m, MonadProvider m) => Text -> (Event,[Text]) -> IRC m ()
 handleMsgReg'd line mustBeReg'd =
   asRegistered $
    case mustBeReg'd of
@@ -89,11 +95,11 @@ handleMsgReg'd line mustBeReg'd =
      _                  -> invalidMessage line
 
 -- | Log an invalid message.
-invalidMessage :: (Functor m, Monad m) => String -> IRC m ()
+invalidMessage :: (Functor m, Monad m) => Text -> IRC m ()
 invalidMessage line = do
     incoming line
-    errorReply $ "Invalid or unknown message type, or not" ++
-                 " enough parameters: " ++ show line
+    errorReply $ "Invalid or unknown message type, or not" <>
+                 " enough parameters: " <> pack (show line)
 
 -- Message handlers
 
@@ -112,27 +118,27 @@ handlePingPong = do
   now <- askTime
   let n = diffUTCTime now lastPong
   if n > 60*4
-     then handleQuit RequestedQuit $ "Ping timeout: " ++ show n ++ " seconds"
+     then handleQuit RequestedQuit $ "Ping timeout: " <> pack (show n) <> " seconds"
      else do hostname <- askConnServerName
              thisCmdReply RPL_PING [hostname]
 
 -- | Handle the CONNECT event.
 handleConnect :: (Functor m, MonadProvider m) => IRC m ()
 handleConnect = do
-  motd <- fmap lines <$> lift providePreface
+  motd <- fmap T.lines <$> lift providePreface
   case motd of
     Nothing -> return ()
     Just lines -> mapM_ notice lines
 
 -- | Handle the PASS message.
-handlePass :: (Functor m, MonadProvider m) => String -> IRC m ()
+handlePass :: (Functor m, MonadProvider m) => Text -> IRC m ()
 handlePass pass = do
   modifyUnregistered $ \u -> u { unregUserPass = Just pass }
   notice "Received password."
   tryRegister
 
 -- | Handle the USER message.
-handleUser :: (Functor m, MonadProvider m) => String -> String -> IRC m ()
+handleUser :: (Functor m, MonadProvider m) => Text -> Text -> IRC m ()
 handleUser user realname = do
   withSentPass $
     if validUser user
@@ -143,7 +149,7 @@ handleUser user realname = do
        else errorReply "Invalid user format."
 
 -- | Handle the USER message.
-handleNick :: (Functor m, MonadProvider m) => String -> IRC m ()
+handleNick :: (Functor m, MonadProvider m) => Text -> IRC m ()
 handleNick nick =
   withSentPass $
     withValidNick nick $ \nick ->
@@ -183,10 +189,10 @@ handleNick nick =
              then do bumpOff nick
                      updateNickAndTryRegistration nick
              else error_reply $
-               let x = "username=" ++ show username ++ ",nick=" ++ show nickname
-               in " (Can only bump the nick that matches your username. Debug: " ++ x ++ ")"
+               let x = "username=" <> pack (show username) <> ",nick=" <> pack (show nickname)
+               in " (Can only bump the nick that matches your username. Debug: " <> x <> ")"
 
-getUsername :: (Functor m,Monad m) => IRC m (Maybe String)
+getUsername :: (Functor m,Monad m) => IRC m (Maybe Text)
 getUsername = do
   user <- getUser
   return $ case user of
@@ -196,7 +202,7 @@ getUsername = do
 -- | Bump off the given nick.
 bumpOff :: (Functor m,MonadProvider m) => Nick -> IRC m ()
 bumpOff nick@(Nick nickstr) = ifNotMyNick nick $ do
-  notice $ "Bumping off user " ++ nickstr ++ "…"
+  notice $ "Bumping off user " <> nickstr <> "…"
   reader <- ask
   withClientByNick nick $ \Client{clientRef=ref} ->
     local (const (makeFake reader ref)) $ do
@@ -217,18 +223,18 @@ ifNotMyNick nick m = do
     _ -> return ()
 
 -- | Handle the PING message.
-handlePing :: (Functor m, Monad m) => String -> IRC m ()
+handlePing :: (Functor m, Monad m) => Text -> IRC m ()
 handlePing p = do
   hostname <- askConnServerName
   thisServerReply RPL_PONG [hostname,p]
 
 -- | Handle the QUIT message.
-handleQuit :: (Functor m, Monad m) => QuitType -> String -> IRC m ()
+handleQuit :: (Functor m, Monad m) => QuitType -> Text -> IRC m ()
 handleQuit quitType msg = do
   clearQuittedUser msg
   when (quitType == RequestedQuit) $ tell [Close]
 
-clearQuittedUser :: (Functor m,Monad m) => String -> IRC m ()
+clearQuittedUser :: (Functor m,Monad m) => Text -> IRC m ()
 clearQuittedUser msg = do
   (myChannels >>=) $ mapM_ $ \Channel{..} -> do
     channelReply channelName RPL_QUIT [msg] ExcludeMe
@@ -242,18 +248,18 @@ clearQuittedUser msg = do
   notice msg
 
 -- | Handle the TELL message.
-handleTell :: (Functor m, Monad m) => String -> String -> IRC m ()
+handleTell :: (Functor m, Monad m) => Text -> Text -> IRC m ()
 handleTell name msg = sendMsgTo RPL_NOTICE name msg
 
 -- | Send the NAMES list of a channel.
-handleNames :: (Functor m,Monad m) => String -> IRC m ()
+handleNames :: (Functor m,Monad m) => Text -> IRC m ()
 handleNames chan = do
   withValidChanName chan sendNamesList
 
 -- | Handle the JOIN message.
-handleJoin :: (Functor m, Monad m) => String -> IRC m ()
+handleJoin :: (Functor m, Monad m) => Text -> IRC m ()
 handleJoin chans = do
-  let names = splitWhen (==',') chans
+  let names = T.split (==',') chans
   forM_ names $ flip withValidChanName $ \name -> do
       exists <- M.member name <$> gets envChannels
       unless exists $ insertChannel name
@@ -261,7 +267,7 @@ handleJoin chans = do
       unless joined $ joinChannel name
 
 -- | Handle the PART message.
-handlePart :: (Functor m, Monad m) => String -> String -> IRC m ()
+handlePart :: (Functor m, Monad m) => Text -> Text -> IRC m ()
 handlePart name msg =
   withValidChanName name $ \name -> do
     removeFromChan name
@@ -275,7 +281,7 @@ removeFromChan name = do
   modifyChannels $ M.adjust remMe name
 
 -- | Handle the TOPIC message.
-handleTopic :: (Functor m, Monad m) => String -> String -> IRC m ()
+handleTopic :: (Functor m, Monad m) => Text -> Text -> IRC m ()
 handleTopic name topic =
   withValidChanName name $ \name -> do
     let setTopic c = c { channelTopic = Just topic }
@@ -283,17 +289,17 @@ handleTopic name topic =
     channelReply name RPL_TOPIC [unChanName name,topic] IncludeMe
 
 -- | Handle the PRIVMSG message.
-handlePrivmsg :: (Functor m, MonadProvider m) => String -> String -> IRC m ()
+handlePrivmsg :: (Functor m, MonadProvider m) => Text -> Text -> IRC m ()
 handlePrivmsg name msg = do
   sendMsgTo RPL_PRIVMSG name msg
   historyLog RPL_PRIVMSG [name,msg]
 
 -- | Handle the NOTICE message.
-handleNotice :: (Functor m, Monad m) => String -> String -> IRC m ()
+handleNotice :: (Functor m, Monad m) => Text -> Text -> IRC m ()
 handleNotice name msg = sendMsgTo RPL_NOTICE name msg
 
 -- | Handle WHOIS message.
-handleWhoIs :: (Functor m, Monad m) => String -> IRC m ()
+handleWhoIs :: (Functor m, Monad m) => Text -> IRC m ()
 handleWhoIs nick =
   withValidNick nick $ \nick ->
     withClientByNick nick $ \Client{..} ->
@@ -309,17 +315,17 @@ handleWhoIs nick =
                             ,"End of WHOIS list."]
 
 -- | Handle the ISON ('is on?') message.
-handleIsOn :: (Functor m, Monad m) => [String] -> IRC m ()
+handleIsOn :: (Functor m, Monad m) => [Text] -> IRC m ()
 handleIsOn (catMaybes . map readNick -> nicks) =
   asRegistered $ do
     online <- catMaybes <$> mapM regUserByNick nicks
-    let nicks = unwords $ map (unNick.regUserNick) online
-    unless (null nicks) $ thisNickServerReply RPL_ISON [nicks ++ " "]
+    let nicks = T.unwords $ map (unNick.regUserNick) online
+    unless (T.null nicks) $ thisNickServerReply RPL_ISON [nicks <> " "]
 
 -- Generic message functions
 
 -- | Send a message to a user or a channel (it figures it out).
-sendMsgTo :: (Functor m, Monad m) => RPL -> String -> String -> IRC m ()
+sendMsgTo :: (Functor m, Monad m) => RPL -> Text -> Text -> IRC m ()
 sendMsgTo typ name msg =
   if validChannel name
      then withValidChanName name $ \name ->
@@ -356,7 +362,7 @@ sendNamesList name = do
       let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
       forM_ (chunksOf 10 nicks) $ \nicks ->
         thisNickServerReply RPL_NAMEREPLY ["@",unChanName name
-                                          ,unwords $ map unNick nicks]
+                                          ,T.unwords $ map unNick nicks]
       thisNickServerReply RPL_ENDOFNAMES [unChanName name
                                          ,"End of /NAMES list."]
 
@@ -391,11 +397,11 @@ withChannel name m = do
                                                  ,"No such channel."]
     Just chan -> m chan
 
-withValidChanName :: (Functor m, Monad m) => String -> (ChannelName -> IRC m ())
+withValidChanName :: (Functor m, Monad m) => Text -> (ChannelName -> IRC m ())
                   -> IRC m ()
 withValidChanName name m
     | validChannel name = m $ ChannelName name
-    | otherwise         = errorReply $ "Invalid channel name: " ++ name
+    | otherwise         = errorReply $ "Invalid channel name: " <> name
 
 -- Client/user access functions
 
@@ -408,7 +414,7 @@ updateLastPong = do
   modifyClients $ M.adjust adjust ref
 
 -- | Read a valid nick.
-readNick :: String -> Maybe Nick
+readNick :: Text -> Maybe Nick
 readNick n | validNick n = Just $ Nick n
            | otherwise   = Nothing
 
@@ -417,13 +423,13 @@ modifyNicks :: (Functor m, Monad m) => (Map Nick Ref -> Map Nick Ref) -> IRC m (
 modifyNicks f = modify $ \env -> env { envNicks = f (envNicks env) }
 
 -- | With a valid nickname, perform an action.
-withValidNick :: (Functor m, Monad m) => String -> (Nick -> IRC m ()) -> IRC m ()
+withValidNick :: (Functor m, Monad m) => Text -> (Nick -> IRC m ()) -> IRC m ()
 withValidNick nick m
     | validNick nick = m (Nick nick)
-    | otherwise      = errorReply $ "Invalid nick format: " ++ nick
+    | otherwise      = errorReply $ "Invalid nick format: " <> nick
 
 -- | Perform an action if a nickname is unique, otherwise send error.
-ifUniqueNick :: (Functor m, Monad m) => Nick -> IRC m () -> Maybe ((String -> IRC m ()) -> IRC m ()) -> IRC m ()
+ifUniqueNick :: (Functor m, Monad m) => Nick -> IRC m () -> Maybe ((Text -> IRC m ()) -> IRC m ()) -> IRC m ()
 ifUniqueNick nick then_m else_m = do
   clients <- gets envClients
   client <- (M.lookup nick >=> (`M.lookup` clients)) <$> gets envNicks
@@ -435,7 +441,7 @@ ifUniqueNick nick then_m else_m = do
         Nothing -> error_reply ""
 
   where error_reply x = thisServerReply ERR_NICKNAMEINUSE
-                                      [unNick nick,"Nick is already in use." ++ x]
+                                      [unNick nick,"Nick is already in use." <> x]
 
 -- | Try to register the user with the USER/NICK/PASS that have been given.
 tryRegister :: (Functor m, MonadProvider m) => IRC m ()
@@ -452,7 +458,7 @@ tryRegister =
       (False,Just{}) -> errorReply $ "Wrong user/pass."
       _ -> return ()
 
-isAuthentic :: MonadProvider m => UnregUser -> IRC m (Bool,Maybe (String,String,Nick))
+isAuthentic :: MonadProvider m => UnregUser -> IRC m (Bool,Maybe (Text,Text,Nick))
 isAuthentic UnregUser{..} = do
   let details = (,,,) <$> unregUserName
                       <*> unregUserNick
@@ -465,7 +471,7 @@ isAuthentic UnregUser{..} = do
       return (authentic,Just (name,user,nick))
 
 -- | Send a client reply to a user.
-userReply :: (Functor m, Monad m) => String -> RPL -> [String] -> IRC m ()
+userReply :: (Functor m, Monad m) => Text -> RPL -> [Text] -> IRC m ()
 userReply nick typ ps =
   withValidNick nick $ \nick ->
     withClientByNick nick $ \Client{..} ->
@@ -627,7 +633,7 @@ newUnregisteredUser = Unregistered $ UnregUser {
 -- Channel replies
 
 -- | Send a client reply to everyone in a channel.
-channelReply :: (Functor m, Monad m) => ChannelName -> RPL -> [String]
+channelReply :: (Functor m, Monad m) => ChannelName -> RPL -> [Text]
              -> ChannelReplyType
              -> IRC m ()
 channelReply name cmd params typ = do
@@ -640,14 +646,14 @@ channelReply name cmd params typ = do
 -- Client replies
 
 -- | Send a client reply to the current client.
-thisClientReply :: (Functor m, Monad m) => RPL -> [String] -> IRC m ()
+thisClientReply :: (Functor m, Monad m) => RPL -> [Text] -> IRC m ()
 thisClientReply typ params = do
   ref <- getRef
   clientReply ref typ params
 
 -- | Send a client reply of the given type with the given params, on
 -- the given connection reference.
-clientReply :: (Functor m, Monad m) => Ref -> RPL -> [String] -> IRC m ()
+clientReply :: (Functor m, Monad m) => Ref -> RPL -> [Text] -> IRC m ()
 clientReply ref typ params = do
   withRegistered $ \user -> do
     client <- getClient
@@ -655,16 +661,16 @@ clientReply ref typ params = do
     reply ref msg
 
 -- | Make a new IRC message from the current client.
-newClientMsg :: (Functor m, Monad m) => Client -> RegUser -> RPL -> [String]
+newClientMsg :: (Functor m, Monad m) => Client -> RegUser -> RPL -> [Text]
              -> IRC m Message
 newClientMsg Client{..} RegUser{..} cmd ps = do
-  let nickName = NickName (unNick regUserNick)
-                          (Just regUserUser)
-                          (Just clientHostname)
+  let nickName = NickName (unpack (unNick regUserNick))
+                          (Just (unpack regUserUser))
+                          (Just (unpack clientHostname))
   return $ Message {
     msg_prefix = Just $ nickName
-   ,msg_command = fromRPL cmd
-   ,msg_params = ps
+   ,msg_command = unpack $ fromRPL cmd
+   ,msg_params = map unpack ps
   }
 
 -- Server replies
@@ -680,7 +686,7 @@ sendMotd :: (Functor m, MonadProvider m) => IRC m ()
 sendMotd = do
   asRegistered $ do
     thisNickServerReply RPL_MOTDSTART ["MOTD"]
-    motd <- fmap lines <$> lift provideMotd
+    motd <- fmap T.lines <$> lift provideMotd
     let motdLine line = thisNickServerReply RPL_MOTD [line]
     case motd of
       Nothing -> motdLine "None."
@@ -700,72 +706,73 @@ sendEvents = do
       forM_ filtered $ \msg -> do
         case msg of
           (time,from',rpl@RPL_PRIVMSG,[name,msg])
-            | name == user || "#" `isPrefixOf` name -> do
-            when ("#" `isPrefixOf` name) $ do
+            | name == user || "#" `T.isPrefixOf` name -> do
+            when ("#" `T.isPrefixOf` name) $ do
               handleJoin name
-            let from = filter (\c -> isDigit c || isLetter c) from'
-                nickName = NickName from
-                                    (Just from)
+            let from = T.filter (\c -> isDigit c || isLetter c) from'
+                nickName = NickName (unpack from)
+                                    (Just (unpack from))
                                     (Just "offline")
             reply ref $ Message {
                           msg_prefix = Just $ nickName
-                         ,msg_command = fromRPL rpl
-                         ,msg_params = [name,"[" ++ show time ++ "] " ++ msg]
+                         ,msg_command = unpack $ fromRPL rpl
+                         ,msg_params = map unpack
+                                           [name,"[" <> pack (show time) <> "] " <> msg]
                          }
           _ -> return ()
 
   where x >. y = x `diffUTCTime` y > 0
 
 -- | Send a message reply.
-notice :: (Functor m, Monad m) => String -> IRC m ()
+notice :: (Functor m, Monad m) => Text -> IRC m ()
 notice msg = thisServerReply RPL_NOTICE ["*",msg]
 
-thisNickServerReply :: (Functor m, Monad m) => RPL -> [String] -> IRC m ()
+thisNickServerReply :: (Functor m, Monad m) => RPL -> [Text] -> IRC m ()
 thisNickServerReply typ params = do
   withRegistered $ \RegUser{regUserNick=Nick nick} ->
     thisServerReply typ (nick : params)
 
 -- | Send a server reply of the given type with the given params.
-thisServerReply :: (Functor m, Monad m) => RPL -> [String] -> IRC m ()
+thisServerReply :: (Functor m, Monad m) => RPL -> [Text] -> IRC m ()
 thisServerReply typ params = do
   ref <- getRef
   serverReply ref typ params
 
 -- | Send a server reply of the given type with the given params.
-serverReply :: (Functor m, Monad m) => Ref -> RPL -> [String] -> IRC m ()
+serverReply :: (Functor m, Monad m) => Ref -> RPL -> [Text] -> IRC m ()
 serverReply ref typ params = do
   msg <- newServerMsg typ params
   reply ref msg
 
 -- | Make a new IRC message from the server.
-newServerMsg :: (Functor m, Monad m) => RPL -> [String] -> IRC m Message
+newServerMsg :: (Functor m, Monad m) => RPL -> [Text] -> IRC m Message
 newServerMsg cmd ps = do
   hostname <- askConnServerName
   return $ Message {
-    msg_prefix = Just $ Server hostname
-   ,msg_command = fromRPL cmd
-   ,msg_params = ps
+    msg_prefix = Just $ Server $ unpack hostname
+   ,msg_command = unpack $ fromRPL cmd
+   ,msg_params = map unpack ps
   }
 
 -- | Send a cmd reply of the given type with the given params.
-thisCmdReply :: (Functor m, Monad m) => RPL -> [String] -> IRC m ()
+thisCmdReply :: (Functor m, Monad m) => RPL -> [Text] -> IRC m ()
 thisCmdReply typ params = do
   ref <- getRef
   cmdReply ref typ params
 
 -- | Send a cmd reply of the given type with the given params.
-cmdReply :: (Functor m, Monad m) => Ref -> RPL -> [String] -> IRC m ()
+cmdReply :: (Functor m, Monad m) => Ref -> RPL -> [Text] -> IRC m ()
 cmdReply ref typ params = do
   msg <- newCmdMsg typ params
   reply ref msg
 
 -- | Make a new IRC message from the cmd.
-newCmdMsg :: (Functor m, Monad m) => RPL -> [String] -> IRC m Message
+newCmdMsg :: (Functor m, Monad m) => RPL -> [Text] -> IRC m Message
 newCmdMsg cmd ps = do
   return $ Message {
     msg_prefix = Nothing
-   ,msg_command = fromRPL cmd
-   ,msg_params = ps
+   ,msg_command = unpack $ fromRPL cmd
+   ,msg_params = map unpack ps
   }
 
 -- | Get the current connection ref.
@@ -775,39 +782,39 @@ getRef = connRef <$> askConn
 -- Output functions
 
 -- | Send an error reply.
-errorReply :: (Functor m, Monad m) => String -> IRC m ()
+errorReply :: (Functor m, Monad m) => Text -> IRC m ()
 errorReply m = do
-  notice $ "ERROR: " ++ m
-  log $ "ERROR: " ++ m
+  notice $ "ERROR: " <> m
+  log $ "ERROR: " <> m
 
 -- | Send a message reply.
 reply :: (Functor m, Monad m) => Ref -> Message -> IRC m ()
 reply ref msg = do
-  outgoing $ encode msg
+  outgoing $ pack $ encode msg
   tell . return $ MessageReply ref msg
 
 -- | Log an incoming line.
-incoming :: (Functor m, Monad m) => String -> IRC m ()
-incoming = log . ("<- " ++)
+incoming :: (Functor m, Monad m) => Text -> IRC m ()
+incoming = log . ("<- " <>)
 
 -- | Log an outgoing line.
-outgoing :: (Functor m, Monad m) => String -> IRC m ()
-outgoing = log . ("-> " ++)
+outgoing :: (Functor m, Monad m) => Text -> IRC m ()
+outgoing = log . ("-> " <>)
 
 -- | Log a line.
-log :: (Functor m, Monad m) => String -> IRC m ()
+log :: (Functor m, Monad m) => Text -> IRC m ()
 log line = do
   ref <- getRef
-  tell . return . LogReply $ show (unRef ref) ++ ": " ++ line
+  tell . return . LogReply $ pack (show (unRef ref)) <> ": " <> line
 
-historyLog :: (Functor m, MonadProvider m) => RPL -> [String] -> IRC m ()
+historyLog :: (Functor m, MonadProvider m) => RPL -> [Text] -> IRC m ()
 historyLog rpl params = do
   chans <- configLogChans <$> askConfig
   unless (null chans) $ do
     withRegistered $ \RegUser{regUserUser=name} -> do
       let send = lift $ provideLogger name rpl params
       case (rpl,params) of
-        (RPL_PRIVMSG,chan@('#':_):_)
+        (RPL_PRIVMSG,[chan])
           | chan `elem` chans -> send
           | otherwise         -> return ()
         _                     -> send
@@ -823,22 +830,22 @@ askConn = asks (\(_time,conn,_config) -> conn)
 askConfig :: (Functor m, Monad m) => IRC m Config
 askConfig = asks (\(_time,_conn,config) -> config)
 
-askConnServerName :: (Functor m, Monad m) => IRC m String
+askConnServerName :: (Functor m, Monad m) => IRC m Text
 askConnServerName = connServerName <$> askConn
 
 -- Validation functions
 
 -- | Is a username valid?
-validUser :: String -> Bool
+validUser :: Text -> Bool
 validUser = validNick
 
 -- | Is a nickname valid? Digit/letter or one of these: -_/\\;()[]{}?`'
-validNick :: String -> Bool
-validNick s = all ok s && length s > 0 where
+validNick :: Text -> Bool
+validNick s = T.all ok s && T.length s > 0 where
   ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
 
 -- | Valid channel name?
-validChannel :: String -> Bool
-validChannel ('#':cs) = all ok cs && length cs > 0 where
+validChannel :: Text -> Bool
+validChannel (T.uncons -> Just ('#',cs)) = T.all ok cs && T.length cs > 0 where
   ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
 validChannel _ = False

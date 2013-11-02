@@ -1,20 +1,23 @@
-{-# OPTIONS -Wall -fno-warn-name-shadowing -fno-warn-orphans #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Hulk.Providers where
 
-import Control.Applicative
-import Control.Monad.Reader
-import Data.Char
-import Data.Maybe
-import Data.Time
-import Data.Time.JSON
-import System.FilePath
-import System.Directory
-import System.IO hiding (readFile)
-import Prelude hiding (readFile)
-import System.IO.Strict (readFile)
-import Text.JSON as JSON
+import           Hulk.Types
 
-import Hulk.Types
+import           Control.Applicative
+import           Control.Monad.Reader
+import           Data.Char
+import           Data.Maybe
+import           Data.Text (Text,pack,unpack)
+import qualified Data.Text.IO as T
+import           Data.Time
+import           Data.Time.JSON
+import           Prelude hiding (readFile)
+import           System.Directory
+import           System.FilePath
+import           System.IO hiding (readFile)
+import           System.IO.Strict (readFile)
+import           Text.JSON as JSON
 
 instance MonadProvider HulkIO where
   providePreface = maybeReadFile configPreface
@@ -23,10 +26,10 @@ instance MonadProvider HulkIO where
   providePasswords = mustReadFile configPasswd
   provideWriteUser udata = do
     path <- asks configUserData
-    liftIO $ writeFile (path </> normalizeUser (userDataUser udata)) $ encode udata
+    liftIO $ writeFile (path </> normalizeUser (unpack (userDataUser udata))) $ encode udata
   provideUser name = do
     path <- asks configUserData
-    let fname = path </> normalizeUser name
+    let fname = path </> normalizeUser (unpack name)
     now <- liftIO $ getCurrentTime
     exists <- liftIO $ doesFileExist fname
     if exists
@@ -56,12 +59,12 @@ instance MonadProvider HulkIO where
 normalizeUser :: [Char] -> [Char]
 normalizeUser = filter (\c -> isDigit c || isLetter c)
 
-maybeReadFile :: (Config -> Maybe FilePath) -> HulkIO (Maybe String)
-maybeReadFile get = do 
+maybeReadFile :: (Config -> Maybe FilePath) -> HulkIO (Maybe Text)
+maybeReadFile get = do
   path <- asks get
   case path of
     Nothing -> return Nothing
-    Just path -> Just <$> liftIO (readFile path)
+    Just path -> Just <$> liftIO (T.readFile path)
 
-mustReadFile :: (Config -> FilePath) -> HulkIO String
-mustReadFile get = asks get >>= liftIO . readFile
+mustReadFile :: (Config -> FilePath) -> HulkIO Text
+mustReadFile get = asks get >>= liftIO . T.readFile

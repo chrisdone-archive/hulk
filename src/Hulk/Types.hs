@@ -1,37 +1,46 @@
-{-# OPTIONS -Wall -fno-warn-name-shadowing #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving, RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards #-}
+
 module Hulk.Types where
 
-import Control.Applicative
-import Control.Monad.Identity
-import Control.Monad.Reader
-import Control.Monad.State
-import Control.Monad.Writer
-import Data.Char
-import Data.Function
-import Data.Map               (Map)
-import Data.Set               (Set)
-import Data.Time
-import Data.Time.JSON
-import Network
-import Network.IRC            hiding (Channel)
-import System.IO
-import Text.JSON
+import           Control.Applicative
+import           Control.Monad.Identity
+import           Control.Monad.Reader
+import           Control.Monad.State
+import           Control.Monad.Writer
+import           Data.Char
+import           Data.Function
+import           Data.Map               (Map)
+import           Data.Set               (Set)
+import           Data.Text              (Text)
+import qualified Data.Text as T
+import           Data.Time
+import           Data.Time.JSON
+import           Network
+import           Network.IRC            hiding (Channel)
+import           System.IO
+import           Text.JSON
 
-data Config = Config {
-      configListen    :: !PortNumber
-    , configHostname  :: !String
-    , configMotd      :: !(Maybe FilePath)
-    , configPreface   :: !(Maybe FilePath)
-    , configPasswd    :: !FilePath
-    , configPasswdKey :: !FilePath
-    , configUserData  :: !FilePath
-    , configLogFile   :: !FilePath
-    , configLogChans  :: ![String]
-    } deriving (Show)
+-- | Server configuration.
+data Config = Config
+  { configListen    :: !PortNumber
+  , configHostname  :: !Text
+  , configMotd      :: !(Maybe FilePath)
+  , configPreface   :: !(Maybe FilePath)
+  , configPasswd    :: !FilePath
+  , configPasswdKey :: !FilePath
+  , configUserData  :: !FilePath
+  , configLogFile   :: !FilePath
+  , configLogChans  :: ![Text]
+  }
+  deriving (Show)
 
-newtype Ref = Ref { unRef :: Handle }
-    deriving (Show,Eq)
+newtype Ref = Ref
+  { unRef :: Handle
+  }
+  deriving (Show,Eq)
 
 instance Ord Ref where
   compare = on compare show
@@ -40,7 +49,7 @@ instance Ord Ref where
 newRef :: Handle -> Ref
 newRef = Ref
 
-data Error = Error String
+data Error = Error Text
 
 data Env = Env {
    envClients  :: !(Map Ref Client)
@@ -49,7 +58,7 @@ data Env = Env {
 }
 
 data UserData = UserData {
-   userDataUser     :: !String
+   userDataUser     :: !Text
   ,userDataLastSeen :: !DateTime
 }
 
@@ -61,23 +70,24 @@ instance JSON UserData where
     makeObj [("user",showJSON userDataUser)
             ,("last_seen",showJSON userDataLastSeen)]
 
-newtype Nick = Nick { unNick :: String } deriving Show
+newtype Nick = Nick { unNick :: Text } deriving Show
 
 instance Ord Nick where
-  compare = on compare (map toLower . unNick)
-instance Eq Nick where
-  (==) = on (==) (map toLower . unNick)
+  compare = on compare (T.toLower . unNick)
 
-newtype ChannelName = ChannelName { unChanName :: String } deriving Show
+instance Eq Nick where
+  (==) = on (==) (T.toLower . unNick)
+
+newtype ChannelName = ChannelName { unChanName :: Text } deriving Show
 
 instance Ord ChannelName where
-  compare = on compare (map toLower . unChanName)
+  compare = on compare (T.toLower . unChanName)
 instance Eq ChannelName where
-  (==) = on (==) (map toLower . unChanName)
+  (==) = on (==) (T.toLower . unChanName)
 
 data Channel = Channel {
       channelName  :: !ChannelName
-    , channelTopic :: !(Maybe String)
+    , channelTopic :: !(Maybe Text)
     , channelUsers :: !(Set Ref)
 } deriving Show
 
@@ -85,35 +95,35 @@ data User = Unregistered UnregUser | Registered RegUser
   deriving Show
 
 data UnregUser = UnregUser {
-   unregUserName :: !(Maybe String)
+   unregUserName :: !(Maybe Text)
   ,unregUserNick :: !(Maybe Nick)
-  ,unregUserUser :: !(Maybe String)
-  ,unregUserPass :: !(Maybe String)
+  ,unregUserUser :: !(Maybe Text)
+  ,unregUserPass :: !(Maybe Text)
 } deriving Show
 
 data RegUser = RegUser {
-   regUserName :: !String
+   regUserName :: !Text
   ,regUserNick :: !Nick
-  ,regUserUser :: !String
-  ,regUserPass :: !String
+  ,regUserUser :: !Text
+  ,regUserPass :: !Text
 } deriving Show
 
 data Client = Client {
       clientRef      :: !Ref
     , clientUser     :: !User
-    , clientHostname :: !String
+    , clientHostname :: !Text
     , clientLastPong :: !UTCTime
     } deriving Show
 
 data Conn = Conn {
    connRef        :: !Ref
-  ,connHostname   :: !String
-  ,connServerName :: !String
+  ,connHostname   :: !Text
+  ,connServerName :: !Text
   ,connTime       :: !UTCTime
 } deriving Show
 
 data Reply = MessageReply !Ref !Message
-           | LogReply !String
+           | LogReply !Text
            | Close
            | Bump Ref
 
@@ -163,7 +173,7 @@ instance JSON RPL where
   readJSON j = read <$> readJSON j
   showJSON x = showJSON $ show x
 
-fromRPL :: RPL -> String
+fromRPL :: RPL -> Text
 fromRPL RPL_WHOISUSER     = "311"
 fromRPL RPL_NICK          = "NICK"
 fromRPL RPL_PONG          = "PONG"
@@ -194,14 +204,14 @@ data QuitType = RequestedQuit | SocketQuit deriving Eq
 data ChannelReplyType = IncludeMe | ExcludeMe deriving Eq
 
 class Monad m => MonadProvider m where
-  providePreface   :: m (Maybe String)
-  provideMotd      :: m (Maybe String)
-  provideKey       :: m String
-  providePasswords :: m String
+  providePreface   :: m (Maybe Text)
+  provideMotd      :: m (Maybe Text)
+  provideKey       :: m Text
+  providePasswords :: m Text
   provideWriteUser :: UserData -> m ()
-  provideUser      :: String -> m UserData
-  provideLogger    :: String -> RPL -> [String] -> m ()
-  provideLog       :: m [(DateTime,String,RPL,[String])]
+  provideUser      :: Text -> m UserData
+  provideLogger    :: Text -> RPL -> [Text] -> m ()
+  provideLog       :: m [(DateTime,Text,RPL,[Text])]
 
 newtype HulkIO a = HulkIO { runHulkIO :: ReaderT Config IO a }
  deriving (Monad,MonadReader Config,Functor,MonadIO)

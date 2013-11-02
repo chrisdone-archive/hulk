@@ -6,7 +6,7 @@ License:             BSD3
 License-file:        LICENSE
 Author:              Chris Done
 Maintainer:          chrisdone@gmail.com
-Copyright:           2010 Chris Done 
+Copyright:           2010 Chris Done
 Category:            Network
 Build-type:          Simple
 Cabal-version:       >=1.2
@@ -23,22 +23,23 @@ Executable hulk
   Hs-Source-Dirs:    src
   Build-depends:     base >= 4 && <5
                     ,cmdargs >= 0.6
-                    ,network >= 2.2 
-                    ,ConfigFile >= 1.0 
-                    ,unix >= 2.4 
-                    ,mtl >= 1.1 
-                    ,containers >= 0.3 
-                    ,irc >= 0.4 
-                    ,split >= 0.1 
-                    ,utf8-string >= 0.3 
-                    ,Crypto>=4.2 
-                    ,time >= 1.1 
-                    ,json >= 0.4 
-                    ,old-locale >= 1.0 
-                    ,old-time >= 1.0 
-                    ,directory >= 1.0 
-                    ,filepath >= 1.1 
-                    ,strict >= 0.3 
+                    ,network >= 2.2
+                    ,ConfigFile >= 1.0
+                    ,unix >= 2.4
+                    ,mtl >= 1.1
+                    ,containers >= 0.3
+                    ,irc >= 0.4
+                    ,split >= 0.1
+                    ,utf8-string >= 0.3
+                    ,Crypto>=4.2
+                    ,time >= 1.1
+                    ,json >= 0.4
+                    ,old-locale >= 1.0
+                    ,old-time >= 1.0
+                    ,directory >= 1.0
+                    ,filepath >= 1.1
+                    ,strict >= 0.3
+                    ,text
 
 Executable hulk-generate-pass
   Main-is:          GeneratePass.hs
@@ -48,14 +49,14 @@ Executable hulk-generate-pass
                      Hulk.Event, Hulk.Log, Hulk.Options, Hulk.Providers,
                      Hulk.Server, Hulk.Types
   Hs-Source-Dirs:   src
-  Build-depends:    base >= 4 
-                    ,cmdargs >= 0.6 
-                    ,network >= 2.2 
-                    ,ConfigFile >= 1.0 
-                    ,unix >= 2.4 
-                    ,mtl >= 1.1 
-                    ,containers >= 0.3 
-                    ,irc >= 0.4 
-                    ,split >= 0.1 
-                    ,utf8-string >= 0.3 
+  Build-depends:    base >= 4
+                    ,cmdargs >= 0.6
+                    ,network >= 2.2
+                    ,ConfigFile >= 1.0
+                    ,unix >= 2.4
+                    ,mtl >= 1.1
+                    ,containers >= 0.3
+                    ,irc >= 0.4
+                    ,split >= 0.1
+                    ,utf8-string >= 0.3
                     ,Crypto>=4.2

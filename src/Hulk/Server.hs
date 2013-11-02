@@ -1,7 +1,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# OPTIONS -Wall -fno-warn-name-shadowing #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Hulk.Server (start) where
+
+import           Hulk.Client
+import           Hulk.Providers           ()
+import           Hulk.Types
 
 import           Control.Applicative
 import           Control.Concurrent
@@ -11,16 +15,16 @@ import           Control.Monad
 import           Control.Monad.Fix
 import           Control.Monad.Reader
 import qualified Data.Map                 as M
+import           Data.Monoid
+import           Data.Text (Text,pack,unpack)
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import           Data.Time
 import           Network
 import           Network.IRC
 import           Prelude hiding (catch)
 import           System.IO
 import           System.IO.UTF8           as UTF8
-
-import           Hulk.Client
-import           Hulk.Providers           ()
-import           Hulk.Types
 
 -- | Start an IRC server with the given configuration.
 start :: Config -> IO ()
@@ -35,7 +39,7 @@ start config = withSocketsDo $ do
     hSetBuffering handle NoBuffering
     now <- getCurrentTime
     let conn = Conn { connRef = newRef handle
-                    , connHostname = host
+                    , connHostname = pack host
                     , connServerName = configHostname config
                     , connTime = now
                     }
@@ -49,25 +53,26 @@ handleClient config handle env conn = do
       runLine x y = runHandle $ makeLine x y
   pinger <- forkIO $ forever $ do delayMinutes 2; runLine PINGPONG []
   fix $ \loop -> do
-    line <- catch (Right <$> UTF8.hGetLine handle)
+    line <- catch (Right <$> T.hGetLine handle)
                   (\(e::IOException) -> do killThread pinger
                                            return $ Left e)
-    case filter (not.newline) <$> line of
-      Right []   -> loop
-      Right line -> do runHandle (line++"\r"); loop
+    case T.filter (not.newline) <$> line of
+      Right line | T.null line -> loop
+                 | otherwise   -> do runHandle (line <> "\r"); loop
       Left _err  -> runLine DISCONNECT ["Connection lost."]
 
   where newline c = c=='\n' || c=='\r'
 
 -- | Make an internal IRC event to give to the client handler.
-makeLine :: Event -> [String] -> String
-makeLine event params = (++"\r") $ encode $
+makeLine :: Event -> [Text] -> Text
+makeLine event params = (<> "\r") $ pack $ encode $
   Message { msg_prefix = Nothing
           , msg_command = show event
-          , msg_params = params }
+          , msg_params = map unpack params
+          }
 
 -- | Handle a received line from the client.
-runClientHandler :: Config -> MVar Env -> Handle -> Conn -> String -> IO ()
+runClientHandler :: Config -> MVar Env -> Handle -> Conn -> Text -> IO ()
 runClientHandler config env handle conn line = do
   now <- getCurrentTime
   modifyMVar_ env $ \env -> do
@@ -92,5 +97,5 @@ sendMessage (Ref handle) msg = do
         (\(_::IOException) -> hClose handle)
 
 -- | Add a line to the log file.
-logLine :: String -> IO ()
-logLine = UTF8.putStrLn
+logLine :: Text -> IO ()
+logLine = T.putStrLn
