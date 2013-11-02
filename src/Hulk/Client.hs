@@ -354,7 +354,7 @@ sendNamesList name = do
     withChannel name $ \Channel{..} -> do
       clients <- catMaybes <$> mapM getClientByRef (S.toList channelUsers)
       let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
-      forM_ (splitEvery 10 nicks) $ \nicks ->
+      forM_ (chunksOf 10 nicks) $ \nicks ->
         thisNickServerReply RPL_NAMEREPLY ["@",unChanName name
                                           ,unwords $ map unNick nicks]
       thisNickServerReply RPL_ENDOFNAMES [unChanName name

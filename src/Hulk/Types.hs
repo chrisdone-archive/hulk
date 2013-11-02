@@ -19,15 +19,15 @@ import System.IO
 import Text.JSON
 
 data Config = Config {
-      configListen :: PortNumber
-    , configHostname :: String
-    , configMotd :: Maybe FilePath
-    , configPreface :: Maybe FilePath
-    , configPasswd :: FilePath
-    , configPasswdKey :: FilePath
-    , configUserData :: FilePath
-    , configLogFile :: FilePath
-    , configLogChans :: [String]
+      configListen    :: !PortNumber
+    , configHostname  :: !String
+    , configMotd      :: !(Maybe FilePath)
+    , configPreface   :: !(Maybe FilePath)
+    , configPasswd    :: !FilePath
+    , configPasswdKey :: !FilePath
+    , configUserData  :: !FilePath
+    , configLogFile   :: !FilePath
+    , configLogChans  :: ![String]
     } deriving (Show)
 
 newtype Ref = Ref { unRef :: Handle }
@@ -43,14 +43,14 @@ newRef = Ref
 data Error = Error String
 
 data Env = Env {
-   envClients :: Map Ref Client
-  ,envNicks :: Map Nick Ref
-  ,envChannels :: Map ChannelName Channel
+   envClients  :: !(Map Ref Client)
+  ,envNicks    :: !(Map Nick Ref)
+  ,envChannels :: !(Map ChannelName Channel)
 }
 
 data UserData = UserData {
-   userDataUser :: String
-  ,userDataLastSeen :: DateTime
+   userDataUser     :: !String
+  ,userDataLastSeen :: !DateTime
 }
 
 instance JSON UserData where
@@ -76,43 +76,46 @@ instance Eq ChannelName where
   (==) = on (==) (map toLower . unChanName)
 
 data Channel = Channel {
-      channelName :: ChannelName
-    , channelTopic :: Maybe String
-    , channelUsers :: Set Ref
+      channelName  :: !ChannelName
+    , channelTopic :: !(Maybe String)
+    , channelUsers :: !(Set Ref)
 } deriving Show
 
 data User = Unregistered UnregUser | Registered RegUser
   deriving Show
 
 data UnregUser = UnregUser {
-   unregUserName :: Maybe String
-  ,unregUserNick :: Maybe Nick
-  ,unregUserUser :: Maybe String
-  ,unregUserPass :: Maybe String
+   unregUserName :: !(Maybe String)
+  ,unregUserNick :: !(Maybe Nick)
+  ,unregUserUser :: !(Maybe String)
+  ,unregUserPass :: !(Maybe String)
 } deriving Show
 
 data RegUser = RegUser {
-   regUserName :: String
-  ,regUserNick :: Nick
-  ,regUserUser :: String
-  ,regUserPass :: String
+   regUserName :: !String
+  ,regUserNick :: !Nick
+  ,regUserUser :: !String
+  ,regUserPass :: !String
 } deriving Show
 
 data Client = Client {
-      clientRef      :: Ref
-    , clientUser     :: User
-    , clientHostname :: String
-    , clientLastPong :: UTCTime
+      clientRef      :: !Ref
+    , clientUser     :: !User
+    , clientHostname :: !String
+    , clientLastPong :: !UTCTime
     } deriving Show
 
 data Conn = Conn {
-   connRef        :: Ref
-  ,connHostname   :: String
-  ,connServerName :: String
-  ,connTime       :: UTCTime
+   connRef        :: !Ref
+  ,connHostname   :: !String
+  ,connServerName :: !String
+  ,connTime       :: !UTCTime
 } deriving Show
 
-data Reply = MessageReply Ref Message | LogReply String | Close | Bump Ref
+data Reply = MessageReply !Ref !Message
+           | LogReply !String
+           | Close
+           | Bump Ref
 
 newtype IRC m a = IRC {
     runIRC :: ReaderT (UTCTime,Conn,Config) (WriterT [Reply] (StateT Env m)) a

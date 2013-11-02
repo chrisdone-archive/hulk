@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS -Wall -fno-warn-name-shadowing #-}
 module Hulk.Server (start) where
@@ -5,6 +6,7 @@ module Hulk.Server (start) where
 import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.Delay
+import           Control.Exception
 import           Control.Monad
 import           Control.Monad.Fix
 import           Control.Monad.Reader
@@ -12,6 +14,7 @@ import qualified Data.Map                 as M
 import           Data.Time
 import           Network
 import           Network.IRC
+import           Prelude hiding (catch)
 import           System.IO
 import           System.IO.UTF8           as UTF8
 
@@ -47,8 +50,8 @@ handleClient config handle env conn = do
   pinger <- forkIO $ forever $ do delayMinutes 2; runLine PINGPONG []
   fix $ \loop -> do
     line <- catch (Right <$> UTF8.hGetLine handle)
-                  (\e -> do killThread pinger
-                            return $ Left e)
+                  (\(e::IOException) -> do killThread pinger
+                                           return $ Left e)
     case filter (not.newline) <$> line of
       Right []   -> loop
       Right line -> do runHandle (line++"\r"); loop
@@ -86,7 +89,7 @@ handleReplies handle reply = do
 sendMessage :: Ref -> Message -> IO ()
 sendMessage (Ref handle) msg = do
   catch (UTF8.hPutStrLn handle (encode msg ++ "\r"))
-        (\_ -> hClose handle)
+        (\(_::IOException) -> hClose handle)
 
 -- | Add a line to the log file.
 logLine :: String -> IO ()
