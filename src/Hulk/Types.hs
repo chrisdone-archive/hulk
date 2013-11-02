@@ -1,10 +1,37 @@
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 
-module Hulk.Types where
+module Hulk.Types
+  (Config (..)
+  ,Nick (..) -- FIXME:
+  ,nickText
+  ,UserName (..) -- FIXME:
+  ,userText
+  ,ChannelName (..) -- FIXME:
+  ,channelNameText
+  ,Env (..)
+  ,Channel (..)
+  ,Client (..)
+  ,User (..)
+  ,UnregUser (..)
+  ,RegUser (..)
+  ,Ref (..)
+  ,mkRef
+  ,UserData (..)
+  ,IRC (..)
+  ,Conn (..)
+  ,Reply (..)
+  ,Event (..)
+  ,RPL (..)
+  ,QuitType (..)
+  ,ChannelReplyType (..)
+  ,MonadProvider (..)
+  ,HulkIO (..)
+  ,HulkP (..))
+  where
 
 import           Control.Applicative
 import           Control.Monad.Identity
@@ -12,17 +39,21 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Writer
 import           Data.Aeson
+import           Data.CaseInsensitive
 import           Data.Char
 import           Data.Function
 import           Data.Map               (Map)
 import           Data.Set               (Set)
 import           Data.Text              (Text)
-import qualified Data.Text as T
+import qualified Data.Text              as T
 import           Data.Time
 import           GHC.Generics
 import           Network
-import           Network.IRC            hiding (Channel)
+import           Network.FastIRC        (Message)
 import           System.IO
+
+--------------------------------------------------------------------------------
+-- Configuration
 
 -- | Server configuration.
 data Config = Config
@@ -35,93 +66,115 @@ data Config = Config
   , configUserData  :: !FilePath
   , configLogFile   :: !FilePath
   , configLogChans  :: ![Text]
-  }
-  deriving (Show)
+  } deriving (Show)
 
-newtype Ref = Ref
-  { unRef :: Handle
-  }
+--------------------------------------------------------------------------------
+-- Fundamental IRC data types
+
+-- | A case-insensitive nickname.
+newtype Nick = NickName (CI Text)
+  deriving (Show,Eq,Ord)
+
+-- | Extract the text of a nickname for use in output.
+nickText :: Nick -> Text
+nickText (NickName ci) = original ci
+
+-- | A case-insensitive username.
+newtype UserName = UserName (CI Text)
+  deriving (Show,Eq,Ord,Generic)
+
+instance ToJSON UserName where
+  toJSON (UserName ci) = toJSON (original ci)
+instance FromJSON UserName where
+  parseJSON = fmap (UserName . mk) . parseJSON
+
+-- | Extract the text of a username for use in output.
+userText :: UserName -> Text
+userText (UserName ci) = original ci
+
+-- | A case-insensitive channel name.
+newtype ChannelName = ChannelName (CI Text)
+  deriving (Show,Eq,Ord)
+
+-- | Extract the text of a channelname for use in output.
+channelNameText :: ChannelName -> Text
+channelNameText (ChannelName ci) = original ci
+
+--------------------------------------------------------------------------------
+-- Server state types
+
+-- | The server state.
+data Env = Env
+  { envClients  :: !(Map Ref Client)
+  , envNicks    :: !(Map Nick Ref)
+  , envChannels :: !(Map ChannelName Channel)
+  } deriving (Show)
+
+-- | A channel.
+data Channel = Channel
+  { channelName  :: !ChannelName
+  , channelTopic :: !(Maybe Text)
+  , channelUsers :: !(Set Ref)
+  } deriving (Show)
+
+--------------------------------------------------------------------------------
+-- Client data types
+
+-- | A connected client.
+data Client = Client
+  { clientRef      :: !Ref
+  , clientUser     :: !User
+  , clientHostname :: !Text
+  , clientLastPong :: !UTCTime
+  } deriving (Show)
+
+-- | Some user, either unregistered or registered.
+data User
+  = Unregistered UnregUser
+  | Registered RegUser
+  deriving Show
+
+-- | An unregistered user.
+data UnregUser = UnregUser
+  { unregUserName :: !(Maybe Text)
+  , unregUserNick :: !(Maybe Nick)
+  , unregUserUser :: !(Maybe UserName)
+  , unregUserPass :: !(Maybe Text)
+  } deriving (Show)
+
+-- | A registered user.
+data RegUser = RegUser
+  { regUserName :: !Text
+  , regUserNick :: !Nick
+  , regUserUser :: !UserName
+  , regUserPass :: !Text
+  } deriving (Show)
+
+-- | A reference for a client.
+newtype Ref = Ref { unRef :: Handle }
   deriving (Show,Eq)
 
+-- | Make a ref.
+mkRef :: Handle -> Ref
+mkRef = Ref
+
+-- | Use for refs in maps.
 instance Ord Ref where
-  compare = on compare show
+  compare x y = if x == y then EQ else LT
 
--- | Construct a Ref value.
-newRef :: Handle -> Ref
-newRef = Ref
+-- | Data saved about a user for later actions like log recall.
+data UserData = UserData
+   { userDataUser     :: !UserName
+   , userDataLastSeen :: !UTCTime
+   } deriving (Show,Generic)
 
-data Error = Error Text
-
-data Env = Env {
-   envClients  :: !(Map Ref Client)
-  ,envNicks    :: !(Map Nick Ref)
-  ,envChannels :: !(Map ChannelName Channel)
-}
-
-data UserData = UserData {
-   userDataUser     :: !Text
-  ,userDataLastSeen :: !UTCTime
-} deriving (Generic)
 instance ToJSON UserData
 instance FromJSON UserData
 
-newtype Nick = Nick { unNick :: Text } deriving Show
+--------------------------------------------------------------------------------
+-- Client handling types
 
-instance Ord Nick where
-  compare = on compare (T.toLower . unNick)
-
-instance Eq Nick where
-  (==) = on (==) (T.toLower . unNick)
-
-newtype ChannelName = ChannelName { unChanName :: Text } deriving Show
-
-instance Ord ChannelName where
-  compare = on compare (T.toLower . unChanName)
-instance Eq ChannelName where
-  (==) = on (==) (T.toLower . unChanName)
-
-data Channel = Channel {
-      channelName  :: !ChannelName
-    , channelTopic :: !(Maybe Text)
-    , channelUsers :: !(Set Ref)
-} deriving Show
-
-data User = Unregistered UnregUser | Registered RegUser
-  deriving Show
-
-data UnregUser = UnregUser {
-   unregUserName :: !(Maybe Text)
-  ,unregUserNick :: !(Maybe Nick)
-  ,unregUserUser :: !(Maybe Text)
-  ,unregUserPass :: !(Maybe Text)
-} deriving Show
-
-data RegUser = RegUser {
-   regUserName :: !Text
-  ,regUserNick :: !Nick
-  ,regUserUser :: !Text
-  ,regUserPass :: !Text
-} deriving Show
-
-data Client = Client {
-      clientRef      :: !Ref
-    , clientUser     :: !User
-    , clientHostname :: !Text
-    , clientLastPong :: !UTCTime
-    } deriving Show
-
-data Conn = Conn {
-   connRef        :: !Ref
-  ,connHostname   :: !Text
-  ,connServerName :: !Text
-  ,connTime       :: !UTCTime
-} deriving Show
-
-data Reply = MessageReply !Ref !Message
-           | LogReply !Text
-           | Close
-           | Bump Ref
-
+-- | The client monad.
 newtype IRC m a = IRC {
     runIRC :: ReaderT (UTCTime,Conn,Config) (WriterT [Reply] (StateT Env m)) a
   }
@@ -131,71 +184,93 @@ newtype IRC m a = IRC {
            ,MonadState Env
            ,MonadReader (UTCTime,Conn,Config))
 
-data Event = PASS | USER | NICK | PING | QUIT | TELL | JOIN | PART | PRIVMSG
-           | NOTICE | ISON | WHOIS | TOPIC | CONNECT | DISCONNECT | PINGPONG
-           | PONG | NAMES
-           | NOTHING
-  deriving (Read,Show)
+-- | Used when handling a line from a client.
+data Conn = Conn
+  { connRef        :: !Ref
+  , connHostname   :: !Text
+  , connServerName :: !Text
+  , connTime       :: !UTCTime
+  } deriving (Show)
 
+-- | Replies are generated by the client after some messages.
+data Reply
+  = MessageReply !Ref !Message
+  | LogReply !Text
+  | Close
+  | Bump !Ref
+  deriving (Show)
 
-data RPL = RPL_WHOISUSER
-         | RPL_NICK
-         | RPL_PONG
-         | RPL_JOIN
-         | RPL_QUIT
-         | RPL_NOTICE
-         | RPL_PART
-         | RPL_PRIVMSG
-         | RPL_ISON
-         | RPL_JOINS
-         | RPL_TOPIC
-         | RPL_NAMEREPLY
-         | RPL_ENDOFNAMES
-         | ERR_NICKNAMEINUSE
-         | RPL_WELCOME
-         | RPL_MOTDSTART
-         | RPL_MOTD
-         | RPL_ENDOFMOTD
-         | RPL_WHOISIDLE
-         | RPL_ENDOFWHOIS
-         | RPL_WHOISCHANNELS
-         | ERR_NOSUCHNICK
-         | ERR_NOSUCHCHANNEL
-         | RPL_PING
-  deriving (Generic)
+-- | An incoming client message.
+data Event
+  = PASS
+  | USER
+  | NICK
+  | PING
+  | QUIT
+  | TELL
+  | JOIN
+  | PART
+  | PRIVMSG
+  | NOTICE
+  | ISON
+  | WHOIS
+  | TOPIC
+  | CONNECT
+  | DISCONNECT
+  | PINGPONG
+  | PONG
+  | NAMES
+  | NOTHING
+  deriving (Show,Read)
+
+-- | An outgoing server reply.
+data RPL
+  = RPL_WHOISUSER
+  | RPL_NICK
+  | RPL_PONG
+  | RPL_JOIN
+  | RPL_QUIT
+  | RPL_NOTICE
+  | RPL_PART
+  | RPL_PRIVMSG
+  | RPL_ISON
+  | RPL_JOINS
+  | RPL_TOPIC
+  | RPL_NAMEREPLY
+  | RPL_ENDOFNAMES
+  | ERR_NICKNAMEINUSE
+  | RPL_WELCOME
+  | RPL_MOTDSTART
+  | RPL_MOTD
+  | RPL_ENDOFMOTD
+  | RPL_WHOISIDLE
+  | RPL_ENDOFWHOIS
+  | RPL_WHOISCHANNELS
+  | ERR_NOSUCHNICK
+  | ERR_NOSUCHCHANNEL
+  | RPL_PING
+  deriving (Show,Generic)
 
 instance ToJSON RPL
 instance FromJSON RPL
 
-fromRPL :: RPL -> Text
-fromRPL RPL_WHOISUSER     = "311"
-fromRPL RPL_NICK          = "NICK"
-fromRPL RPL_PONG          = "PONG"
-fromRPL RPL_QUIT          = "QUIT"
-fromRPL RPL_JOIN          = "JOIN"
-fromRPL RPL_NOTICE        = "NOTICE"
-fromRPL RPL_PART          = "PART"
-fromRPL RPL_PRIVMSG       = "PRIVMSG"
-fromRPL RPL_ISON          = "303"
-fromRPL RPL_JOINS         = "JOIN"
-fromRPL RPL_TOPIC         = "TOPIC"
-fromRPL RPL_NAMEREPLY     = "353"
-fromRPL RPL_ENDOFNAMES    = "366"
-fromRPL RPL_WELCOME       = "001"
-fromRPL RPL_MOTDSTART     = "375"
-fromRPL RPL_MOTD          = "372"
-fromRPL RPL_ENDOFMOTD     = "376"
-fromRPL RPL_WHOISIDLE     = "317"
-fromRPL RPL_WHOISCHANNELS = "319"
-fromRPL RPL_ENDOFWHOIS    = "318"
-fromRPL ERR_NICKNAMEINUSE = "433"
-fromRPL ERR_NOSUCHNICK    = "401"
-fromRPL ERR_NOSUCHCHANNEL = "403"
-fromRPL RPL_PING          = "PING"
+-- | When quitting it can either be due to user request, ping timeout,
+-- or the socket was closed.
+data QuitType
+  = RequestedQuit
+  | SocketQuit
+  deriving (Show,Eq)
 
-data QuitType = RequestedQuit | SocketQuit deriving Eq
+-- | When sending a channel reply, it can either include the current
+-- client or exclude them (e.g. when the client sends a message, it's
+-- no use echoing it back to that user).
+data ChannelReplyType
+  = IncludeMe
+  | ExcludeMe
+  deriving (Show,Eq)
 
-data ChannelReplyType = IncludeMe | ExcludeMe deriving Eq
+--------------------------------------------------------------------------------
+-- Providers
 
 class Monad m => MonadProvider m where
   providePreface   :: m (Maybe Text)

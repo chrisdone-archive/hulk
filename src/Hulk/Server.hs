@@ -21,7 +21,9 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import           Data.Time
 import           Network
-import           Network.IRC
+import           Network.FastIRC
+import qualified Network.FastIRC.IO as IRC
+import           Network.FastIRC.Messages (Command(..))
 import           Prelude hiding (catch)
 import           System.IO
 import           System.IO.UTF8           as UTF8
@@ -38,7 +40,7 @@ start config = withSocketsDo $ do
     (handle,host,_port) <- accept listenSock
     hSetBuffering handle NoBuffering
     now <- getCurrentTime
-    let conn = Conn { connRef = newRef handle
+    let conn = Conn { connRef = mkRef handle
                     , connHostname = pack host
                     , connServerName = configHostname config
                     , connTime = now
@@ -49,34 +51,33 @@ start config = withSocketsDo $ do
 -- | Handle a client connection.
 handleClient :: Config -> Handle -> MVar Env -> Conn -> IO ()
 handleClient config handle env conn = do
-  let runHandle = runClientHandler config env handle conn
-      runLine x y = runHandle $ makeLine x y
-  pinger <- forkIO $ forever $ do delayMinutes 2; runLine PINGPONG []
+  let run = runClientHandler config env handle conn
+      fake cmd ps = run (Message Nothing (StringCmd cmd ps))
+
+  pinger <- forkIO $ forever $ do
+    delayMinutes 2
+    fake "PINGPONG" []
+
   fix $ \loop -> do
-    line <- catch (Right <$> T.hGetLine handle)
-                  (\(e::IOException) -> do killThread pinger
-                                           return $ Left e)
-    case T.filter (not.newline) <$> line of
-      Right line | T.null line -> loop
-                 | otherwise   -> do runHandle (line <> "\r"); loop
-      Left _err  -> runLine DISCONNECT ["Connection lost."]
+    eline <- catch (Right <$> IRC.hGetIRCLine handle)
+                   (\(e::IOException) -> do killThread pinger
+                                            return $ Left e)
+    case eline of
+      Left{} -> fake "DISCONNECT" []
+      Right line ->
+        case readMessage line of
+          Just msg -> do run msg
+                         loop
+          Nothing -> loop
 
   where newline c = c=='\n' || c=='\r'
 
--- | Make an internal IRC event to give to the client handler.
-makeLine :: Event -> [Text] -> Text
-makeLine event params = (<> "\r") $ pack $ encode $
-  Message { msg_prefix = Nothing
-          , msg_command = show event
-          , msg_params = map unpack params
-          }
-
--- | Handle a received line from the client.
-runClientHandler :: Config -> MVar Env -> Handle -> Conn -> Text -> IO ()
-runClientHandler config env handle conn line = do
+-- | Handle a received message from the client.
+runClientHandler :: Config -> MVar Env -> Handle -> Conn -> Message -> IO ()
+runClientHandler config env handle conn msg = do
   now <- getCurrentTime
   modifyMVar_ env $ \env -> do
-    (replies,env) <- runReaderT (runHulkIO $ handleLine config env now conn line)
+    (replies,env) <- runReaderT (runHulkIO $ handleCommand config env now conn (msgCommand msg))
                                 config
     mapM_ (handleReplies handle) replies
     return env
@@ -93,7 +94,7 @@ handleReplies handle reply = do
 -- | Send a message to a client.
 sendMessage :: Ref -> Message -> IO ()
 sendMessage (Ref handle) msg = do
-  catch (UTF8.hPutStrLn handle (encode msg ++ "\r"))
+  catch (IRC.hPutMessage handle msg)
         (\(_::IOException) -> hClose handle)
 
 -- | Add a line to the log file.
