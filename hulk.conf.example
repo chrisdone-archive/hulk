@@ -15,4 +15,4 @@ data_dir=users/
 
 [LOGS]
 event_log=event-log
-channels=channel1 channel2
+channels=#hulk

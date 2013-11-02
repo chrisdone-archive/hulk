@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -10,6 +11,7 @@ import           Control.Monad.Identity
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Writer
+import           Data.Aeson
 import           Data.Char
 import           Data.Function
 import           Data.Map               (Map)
@@ -17,11 +19,10 @@ import           Data.Set               (Set)
 import           Data.Text              (Text)
 import qualified Data.Text as T
 import           Data.Time
-import           Data.Time.JSON
+import           GHC.Generics
 import           Network
 import           Network.IRC            hiding (Channel)
 import           System.IO
-import           Text.JSON
 
 -- | Server configuration.
 data Config = Config
@@ -59,16 +60,10 @@ data Env = Env {
 
 data UserData = UserData {
    userDataUser     :: !Text
-  ,userDataLastSeen :: !DateTime
-}
-
-instance JSON UserData where
-  readJSON o = do obj <- readJSON o
-                  UserData <$> valFromObj "user" obj
-                           <*> valFromObj "last_seen" obj
-  showJSON UserData{..} =
-    makeObj [("user",showJSON userDataUser)
-            ,("last_seen",showJSON userDataLastSeen)]
+  ,userDataLastSeen :: !UTCTime
+} deriving (Generic)
+instance ToJSON UserData
+instance FromJSON UserData
 
 newtype Nick = Nick { unNick :: Text } deriving Show
 
@@ -167,11 +162,10 @@ data RPL = RPL_WHOISUSER
          | ERR_NOSUCHNICK
          | ERR_NOSUCHCHANNEL
          | RPL_PING
-  deriving (Show,Read)
+  deriving (Generic)
 
-instance JSON RPL where
-  readJSON j = read <$> readJSON j
-  showJSON x = showJSON $ show x
+instance ToJSON RPL
+instance FromJSON RPL
 
 fromRPL :: RPL -> Text
 fromRPL RPL_WHOISUSER     = "311"
@@ -211,7 +205,7 @@ class Monad m => MonadProvider m where
   provideWriteUser :: UserData -> m ()
   provideUser      :: Text -> m UserData
   provideLogger    :: Text -> RPL -> [Text] -> m ()
-  provideLog       :: m [(DateTime,Text,RPL,[Text])]
+  provideLog       :: m [(UTCTime,Text,RPL,[Text])]
 
 newtype HulkIO a = HulkIO { runHulkIO :: ReaderT Config IO a }
  deriving (Monad,MonadReader Config,Functor,MonadIO)

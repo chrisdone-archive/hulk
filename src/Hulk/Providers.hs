@@ -6,18 +6,20 @@ import           Hulk.Types
 
 import           Control.Applicative
 import           Control.Monad.Reader
+import           Data.Aeson
+import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as L8
 import           Data.Char
 import           Data.Maybe
+import           Data.Monoid
 import           Data.Text (Text,pack,unpack)
 import qualified Data.Text.IO as T
 import           Data.Time
-import           Data.Time.JSON
 import           Prelude hiding (readFile)
 import           System.Directory
 import           System.FilePath
 import           System.IO hiding (readFile)
 import           System.IO.Strict (readFile)
-import           Text.JSON as JSON
 
 instance MonadProvider HulkIO where
   providePreface = maybeReadFile configPreface
@@ -26,35 +28,31 @@ instance MonadProvider HulkIO where
   providePasswords = mustReadFile configPasswd
   provideWriteUser udata = do
     path <- asks configUserData
-    liftIO $ writeFile (path </> normalizeUser (unpack (userDataUser udata))) $ encode udata
+    liftIO $ L.writeFile (path </> normalizeUser (unpack (userDataUser udata))) $ encode udata
   provideUser name = do
     path <- asks configUserData
     let fname = path </> normalizeUser (unpack name)
     now <- liftIO $ getCurrentTime
     exists <- liftIO $ doesFileExist fname
     if exists
-       then do contents <- liftIO $ readFile fname
+       then do contents <- liftIO $ L.readFile fname
                case decode contents of
-                 Ok u -> return u
-                 JSON.Error e -> error e
-       else return $ UserData name (DateTime now)
+                 Just u -> return u
+                 Nothing -> error ("unable to parse user file: " ++ fname)
+       else return $ UserData name now
   provideLogger name rpl params = do
     path <- asks configLogFile
     now <- liftIO $ getCurrentTime
     liftIO $
-      appendFile path $ encode ([showJSON $ DateTime now
-                                ,showJSON name
-                                ,showJSON rpl
-                                ,showJSON params])
-                        ++ "\n"
+      L.appendFile path $ encode ((now
+                                  ,name
+                                  ,rpl
+                                  ,params))
+                          <> "\n"
   provideLog = do
     path <- asks configLogFile
-    contents <- liftIO $ readFile path
-    return $ mapMaybe parse $ lines contents
-      where parse line =
-             case decode line of
-               Ok event -> Just event
-               _ -> Nothing
+    contents <- liftIO $ L.readFile path
+    return $ mapMaybe decode $ L8.lines contents
 
 normalizeUser :: [Char] -> [Char]
 normalizeUser = filter (\c -> isDigit c || isLetter c)

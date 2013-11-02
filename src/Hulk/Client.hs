@@ -27,7 +27,6 @@ import qualified Data.Set as S
 import           Data.Text (Text,pack,unpack)
 import qualified Data.Text as T
 import           Data.Time
-import           Data.Time.JSON
 import           Network.IRC          hiding (Channel)
 import           Prelude              hiding (log)
 
@@ -108,7 +107,7 @@ handlePong = do
   now <- askTime
   withRegistered $ \RegUser{regUserUser=user} -> do
     lift $ provideWriteUser UserData { userDataUser = user
-                                     , userDataLastSeen = DateTime now
+                                     , userDataLastSeen = now
                                      }
 
 -- | Handle the PINGPONG event. Disconnect the client if timedout.
@@ -699,8 +698,8 @@ sendEvents = do
   unless (null chans) $ do
     withRegistered $ \RegUser{regUserUser=user} -> do
       events <- lift provideLog
-      UserData{userDataLastSeen=DateTime lastSeen} <- lift $ provideUser user
-      let filtered = flip filter events $ \(DateTime time,_from,_typ,_params) ->
+      UserData{userDataLastSeen=lastSeen} <- lift $ provideUser user
+      let filtered = flip filter events $ \(time,_from,_typ,_params) ->
                       time >. lastSeen
       ref <- getRef
       forM_ filtered $ \msg -> do
