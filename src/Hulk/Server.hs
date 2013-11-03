@@ -44,6 +44,7 @@ start config = withSocketsDo $ do
   statevar <- newMVar HulkState { stateClients  = M.empty
                                 , stateNicks    = M.empty
                                 , stateChannels = M.empty }
+  lvar <- newMVar ()
   forever $ do
     (handle,host,_port) <- accept listenSock
     hSetBuffering handle NoBuffering
@@ -54,11 +55,11 @@ start config = withSocketsDo $ do
                     , connTime = now
                     }
     auth <- getAuth config
-    void $ forkIO $ handleClient config handle statevar auth conn
+    void $ forkIO $ handleClient lvar config handle statevar auth conn
 
 -- | Handle a client connection.
-handleClient :: Config -> Handle -> MVar HulkState -> (String,String) -> Conn -> IO ()
-handleClient config handle env auth conn = do
+handleClient :: MVar () -> Config -> Handle -> MVar HulkState -> (String,String) -> Conn -> IO ()
+handleClient lvar config handle env auth conn = do
   messages <- newChan
   let writeMsg cmd =
         writeChan messages (Message Nothing (StringCmd cmd []))
@@ -80,25 +81,25 @@ handleClient config handle env auth conn = do
 
   fix $ \loop -> do
      msg <- readChan messages
-     runClientHandler config env handle conn auth msg
+     runClientHandler lvar config env handle conn auth msg
      case msg of
        Message  _  (StringCmd "DISCONNECT" _) -> return ()
        _ -> loop
 
 -- | Handle a received message from the client.
-runClientHandler :: Config -> MVar HulkState -> Handle -> Conn -> (String,String) -> Message -> IO ()
-runClientHandler config state handle conn auth msg = do
+runClientHandler :: MVar () -> Config -> MVar HulkState -> Handle -> Conn -> (String,String) -> Message -> IO ()
+runClientHandler lvar config state handle conn auth msg = do
   now <- getCurrentTime
   instructions <- modifyMVar state $ \state -> return $
     let ((),newstate,instructions) = handleCommand config state now conn auth (msgCommand msg)
     in (newstate,instructions)
-  forM_ instructions $ handleWriter config handle
+  forM_ instructions $ handleWriter lvar config handle
 
 -- | Act on writer from the client.
-handleWriter :: Config -> Handle -> HulkWriter -> IO ()
-handleWriter config@Config{..} handle writer = do
+handleWriter :: MVar () -> Config -> Handle -> HulkWriter -> IO ()
+handleWriter lvar config@Config{..} handle writer = do
   case writer of
-    SaveLog name rpl params -> saveToLog config name rpl params
+    SaveLog name rpl params -> saveToLog lvar config name rpl params
     MessageReply ref msg -> sendMessage ref msg
     LogReply line -> logLine line
     Close -> hClose handle
@@ -108,7 +109,7 @@ handleWriter config@Config{..} handle writer = do
                   (encode udata)
     SendEvents ref user -> do
       writers <- sendEvents config ref user
-      mapM_ (handleWriter config handle) (concat writers)
+      mapM_ (handleWriter lvar config handle) (concat writers)
 
 -- | Send a message to a client.
 sendMessage :: Ref -> Message -> IO ()
@@ -174,8 +175,9 @@ getAuth Config{..} =
       <*> readFile configPasswd
 
 -- | Save the message to the log.
-saveToLog :: Config -> Text -> RPL -> [Text] -> IO ()
-saveToLog Config{..} name rpl params = do
+saveToLog :: MVar () -> Config -> Text -> RPL -> [Text] -> IO ()
+saveToLog lvar Config{..} name rpl params = do
   now <- getCurrentTime
-  L.appendFile configLogFile $
-    encode ((now,name,rpl,params)) <> "\n"
+  withMVar lvar $ const $
+    L.appendFile configLogFile $
+      encode ((now,name,rpl,params)) <> "\n"
