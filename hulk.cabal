@@ -10,7 +10,16 @@ Copyright:           2010 Chris Done
 Category:            Network
 Build-type:          Simple
 Cabal-version:       >=1.2
-Extra-source-files:  README.md, hulk.conf.example, txt/MOTD, txt/PREFACE
+Extra-source-files:
+  README.md
+  example/log/events.log
+  example/auth/passwd
+  example/auth/passwd-key
+  example/txt/PREFACE
+  example/txt/MOTD
+  example/hulk.conf
+  example/users/hulk2
+  example/users/hulk
 
 Library
   Exposed-Modules:

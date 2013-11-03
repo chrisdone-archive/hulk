@@ -14,12 +14,18 @@
 
 ## Usage
 
+See a complete example in the `example/` directory in the root of the
+project. You can go into that directory and run `hulk -chulk.conf` to
+have an immediate server running on localhost port 6667.
+
 ### Configuration
 
-    $ cp hulk.conf.example hulk.conf
-    
+    $ cp example/hulk.conf hulk.conf
+
 You can edit the port, server name and MOTD file in here.
-    
+
+Detailed instructions follow.
+
 ### Auth
 
     $ mkdir auth
@@ -67,9 +73,9 @@ Make a stunnel.conf file:
     [hulk]
     connect = 127.0.0.1:6666
     accept = 6667
-    
+
 Then run it:
-    
+
     stunnel stunnel.conf
 
 (It may be in `/usr/sbin/stunnel` depending on your system.)
@@ -105,21 +111,3 @@ Then run it:
 
     $ rss2irc http://myserver/foo.atom announce@127.0.0.1/#dev \
       -p 6667 -i 1 -l  --pass myannouncepass
-
-## Utility for 'telling' people things externally
-
-Sometimes you want automatic scripts to send notices to the IRC.
-
-Save this script in `tell.sh`:
-
-    (cat /mypath/tell-login; echo "NICK $1"; echo "TELL $2 :$3") | nc serverip 6667 -w 1 > /dev/null
-
-Run it like this:
-
-    $ tell announce '#dev' 'Stuff happened!'
-
-And put this in your /mypath/tell-login:
-
-    $ cat /opt/hulk/tell-login
-    PASS mypassword
-    USER myuser * * *
