@@ -2,10 +2,9 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Hulk.Server (start) where
+module Hulk.Server where
 
-import           Hulk.Client
-import           Hulk.Providers           ()
+import           Hulk.Client              (handleCommand,makeCommand,outgoingWriter)
 import           Hulk.Types
 
 import           Control.Applicative

@@ -32,25 +32,18 @@ module Hulk.Types
   ,HulkState(..))
   where
 
-import           Control.Applicative
-
-import           Control.Monad.RWS
-
-
-
-import           Data.Aeson
-import           Data.CaseInsensitive
-
-
-import           Data.Map               (Map)
-import           Data.Set               (Set)
-import           Data.Text              (Text)
-
-import           Data.Time
-import           GHC.Generics
-import           Network
-import           Network.FastIRC        (Message)
-import           System.IO
+import Control.Applicative
+import Control.Monad.RWS
+import Data.Aeson
+import Data.CaseInsensitive
+import Data.Map               (Map)
+import Data.Set               (Set)
+import Data.Text              (Text)
+import Data.Time
+import GHC.Generics
+import Network
+import Network.FastIRC        (Message)
+import System.IO
 
 --------------------------------------------------------------------------------
 -- Configuration

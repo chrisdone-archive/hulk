@@ -2,15 +2,15 @@
 {-# OPTIONS -Wall -fno-warn-missing-signatures -fno-warn-name-shadowing #-}
 module Main where
 
-import System.Console.CmdArgs
-import Data.HMAC
-import Codec.Binary.UTF8.String
-import Numeric
-import Data.String
-import Control.Applicative
-
 import Hulk.Types
 import Hulk.Config
+
+import Codec.Binary.UTF8.String
+import Control.Applicative
+import Data.Char
+import Data.HMAC
+import Numeric
+import System.Console.CmdArgs
 
 data Options = Options
   { conf      :: FilePath
@@ -35,3 +35,6 @@ main = do
   putStrLn $ ((user options ++ " ") ++)
            $ concat $ map (\x -> showHex x "")
            $ hmac_sha1 (encode key) (encode pass)
+
+  where downcase = map toLower
+        digilet c = isDigit c || isLetter c
