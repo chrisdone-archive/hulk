@@ -38,4 +38,4 @@ getConfig conf = do
           }
   case config of
     Left cperr   -> error $ show cperr
-    Right config -> return config
+    Right config' -> return config'

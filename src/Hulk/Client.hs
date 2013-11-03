@@ -12,7 +12,7 @@ import           Hulk.Auth
 import           Hulk.Types
 
 import           Control.Applicative
-import           Control.Monad.RWS
+import           Control.Monad.RWS hiding (pass)
 import           Data.CaseInsensitive (mk)
 import           Data.Char
 import           Data.List
@@ -21,7 +21,7 @@ import           Data.Map             (Map)
 import qualified Data.Map             as M
 import           Data.Maybe
 import qualified Data.Set             as S
-import           Data.Text            (Text, pack, unpack)
+import           Data.Text            (Text, pack)
 import qualified Data.Text            as T
 import           Data.Text.Encoding   (decodeUtf8,encodeUtf8)
 import           Data.Time hiding (readTime)
@@ -41,10 +41,10 @@ handleCommand
   -> (String,String)               -- ^ Authorization info.
   -> Command                       -- ^ The command.
   -> ((), HulkState, [HulkWriter]) -- ^ The new transformed state and any instructions.
-handleCommand config state now conn auth cmd = do
+handleCommand config state' now conn auth cmd = do
   runRWS (runHulk (handleCmd cmd))
          (HulkReader now conn config Nothing auth)
-         state
+         state'
 
 -- | Handle an incoming command.
 handleCmd :: Command -- ^ A command which shouldn't be logged (e.g. PASS).
@@ -156,19 +156,19 @@ handleUser user realname = do
 
 -- | Handle the USER message.
 handleNick :: Text -> Hulk ()
-handleNick nick =
+handleNick nick' =
   withSentPass $
-    withValidNick nick $ \nick ->
+    withValidNick nick' $ \nick ->
       ifNotMyNick nick $
         ifUniqueNick nick (updateNickAndTryRegistration nick)
                           (Just (tryBumpingSomeoneElseOff nick))
 
   where updateNickAndTryRegistration nick = do
           ref <- getRef
-          withRegistered $ \RegUser{regUserNick=nick} ->
-            modifyNicks $ M.delete nick
-          withUnregistered $ \UnregUser{unregUserNick=nick} ->
-            maybe (return ()) (modifyNicks . M.delete) nick
+          withRegistered $ \RegUser{regUserNick=rnick} ->
+            modifyNicks $ M.delete rnick
+          withUnregistered $ \UnregUser{unregUserNick=rnick} ->
+            maybe (return ()) (modifyNicks . M.delete) rnick
           modifyNicks $ M.insert nick ref
           modifyUnregistered $ \u -> u { unregUserNick = Just nick }
           tryRegister
@@ -233,14 +233,14 @@ handleJoin chans = do
 -- | Handle the PART message.
 handlePart :: Text -> Text -> Hulk ()
 handlePart name msg =
-  withValidChanName name $ \name -> do
-    removeFromChan name
-    channelReply name RPL_PART [msg] IncludeMe
+  withValidChanName name $ \vname -> do
+    removeFromChan vname
+    channelReply vname RPL_PART [msg] IncludeMe
 
 -- | Handle the TOPIC message.
 handleTopic :: Text -> Text -> Hulk ()
-handleTopic name topic =
-  withValidChanName name $ \name -> do
+handleTopic name' topic =
+  withValidChanName name' $ \name -> do
     let setTopic c = c { channelTopic = Just topic }
     modifyChannels $ M.adjust setTopic name
     channelReply name RPL_TOPIC [channelNameText name,topic] IncludeMe
@@ -257,8 +257,8 @@ handleNotice name msg = sendMsgTo RPL_NOTICE name msg
 
 -- | Handle WHOIS message.
 handleWhoIs :: Text -> Hulk ()
-handleWhoIs nick =
-  withValidNick nick $ \nick ->
+handleWhoIs nick' =
+  withValidNick nick' $ \nick ->
     withClientByNick nick $ \Client{..} ->
       withRegUserByNick nick $ \RegUser{..} -> do
         thisNickServerReply RPL_WHOISUSER
@@ -273,9 +273,9 @@ handleWhoIs nick =
 
 -- | Handle the ISON ('is on?') message.
 handleIsOn :: [Text] -> Hulk ()
-handleIsOn (catMaybes . map readNick -> nicks) =
+handleIsOn (catMaybes . map readNick -> nicks') =
   asRegistered $ do
-    online <- catMaybes <$> mapM regUserByNick nicks
+    online <- catMaybes <$> mapM regUserByNick nicks'
     let nicks = T.unwords $ map (nickText.regUserNick) online
     unless (T.null nicks) $ thisNickServerReply RPL_ISON [nicks <> " "]
 
@@ -284,11 +284,11 @@ handleIsOn (catMaybes . map readNick -> nicks) =
 
 -- | Send a message to a user or a channel (it figures it out).
 sendMsgTo :: RPL -> Text -> Text -> Hulk ()
-sendMsgTo typ name msg =
-  if validChannel name
-     then withValidChanName name $ \name ->
+sendMsgTo typ name' msg =
+  if validChannel name'
+     then withValidChanName name' $ \name ->
             channelReply name typ [channelNameText name,msg] ExcludeMe
-     else userReply name typ [name,msg]
+     else userReply name' typ [name',msg]
 
 --------------------------------------------------------------------------------
 -- * Users
@@ -345,8 +345,8 @@ updateLastPong = do
 
 -- | Send a client reply to a user.
 userReply :: Text -> RPL -> [Text] -> Hulk ()
-userReply nick typ ps =
-  withValidNick nick $ \nick ->
+userReply nick' typ ps =
+  withValidNick nick' $ \nick ->
     withClientByNick nick $ \Client{..} ->
       clientReply clientRef typ ps
 
@@ -355,7 +355,7 @@ withRegUserByNick :: Nick -> (RegUser -> Hulk ()) -> Hulk ()
 withRegUserByNick nick m = do
   user <- regUserByNick nick
   case user of
-    Just user -> m user
+    Just user' -> m user'
     Nothing -> sendNoSuchNick nick
 
 -- | Send the RPL_NOSUCHNICK reply.
@@ -393,12 +393,12 @@ clientByNick nick = do
 -- | Perform an action with a client by nickname.
 withClientByNick :: Nick -> (Client -> Hulk ()) -> Hulk ()
 withClientByNick nick m = do
-    client <- clientByNick nick
-    case client of
-      Nothing -> sendNoSuchNick nick
-      Just client@Client{..}
-          | isRegistered clientUser -> m client
-          | otherwise -> sendNoSuchNick nick
+  client' <- clientByNick nick
+  case client' of
+    Nothing -> sendNoSuchNick nick
+    Just client@Client{..}
+        | isRegistered clientUser -> m client
+        | otherwise -> sendNoSuchNick nick
 
 -- | Get the current client.
 getClient :: Hulk Client
@@ -448,7 +448,7 @@ modifyUnregistered :: (UnregUser -> UnregUser) -> Hulk ()
 modifyUnregistered f = do
   modifyUser $ \user ->
       case user of
-        Unregistered user -> Unregistered (f user)
+        Unregistered user' -> Unregistered (f user')
         u -> u
 
 -- | Modify the current user if registered.
@@ -456,7 +456,7 @@ modifyRegistered :: (RegUser -> RegUser) -> Hulk ()
 modifyRegistered f = do
   modifyUser $ \user ->
       case user of
-        Registered user -> Registered (f user)
+        Registered user' -> Registered (f user')
         u -> u
 
 -- | Only perform command if the client is registered.
@@ -470,7 +470,7 @@ withRegistered :: (RegUser -> Hulk ()) -> Hulk ()
 withRegistered m = do
   user <- getUser
   case user of
-    Registered user -> m user
+    Registered user' -> m user'
     _ -> return ()
 
 -- | With sent pass.
@@ -487,7 +487,7 @@ withUnregistered :: (UnregUser -> Hulk ()) -> Hulk ()
 withUnregistered m = do
   user <- getUser
   case user of
-    Unregistered user -> m user
+    Unregistered user' -> m user'
     _ -> return ()
 
 -- | Only perform command if the client is registered.
@@ -566,7 +566,7 @@ ifUniqueNick nick then_m else_m = do
     Nothing -> then_m
     Just{}  -> do
       case else_m of
-        Just else_m -> else_m error_reply
+        Just else_m' -> else_m' error_reply
         Nothing -> error_reply ""
 
   where error_reply x = thisServerReply ERR_NICKNAMEINUSE
@@ -629,9 +629,9 @@ sendNamesList name = do
     withChannel name $ \Channel{..} -> do
       clients <- catMaybes <$> mapM getClientByRef (S.toList channelUsers)
       let nicks = map regUserNick . catMaybes . map clientRegUser $ clients
-      forM_ (chunksOf 10 nicks) $ \nicks ->
+      forM_ (chunksOf 10 nicks) $ \nicks' ->
         thisNickServerReply RPL_NAMEREPLY ["@",channelNameText name
-                                          ,T.unwords $ map nickText nicks]
+                                          ,T.unwords $ map nickText nicks']
       thisNickServerReply RPL_ENDOFNAMES [channelNameText name
                                          ,"End of /NAMES list."]
 
@@ -669,7 +669,7 @@ withChannel name m = do
   case chan of
     Nothing -> thisServerReply ERR_NOSUCHCHANNEL [channelNameText name
                                                  ,"No such channel."]
-    Just chan -> m chan
+    Just chan' -> m chan'
 
 -- | Send a client reply to everyone in a channel.
 channelReply :: ChannelName -> RPL -> [Text]
@@ -727,7 +727,7 @@ sendMotd = do
     let motdLine line = thisNickServerReply RPL_MOTD [line]
     case motd of
       Nothing -> motdLine "None."
-      Just lines -> mapM_ motdLine lines
+      Just lines' -> mapM_ motdLine lines'
     thisNickServerReply RPL_ENDOFMOTD ["/MOTD."]
 
 -- | Send events that the user missed.

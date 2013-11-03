@@ -4,33 +4,34 @@
 
 module Hulk.Server where
 
-import           Hulk.Client              (handleCommand,makeCommand,outgoingWriter)
+import           Hulk.Client                (handleCommand, makeCommand,
+                                             outgoingWriter)
 import           Hulk.Types
 
 import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.Delay
-import           Control.Exception
+import           Control.Exception          (IOException, try)
 import           Control.Monad
 import           Control.Monad.Fix
 import           Data.Aeson
+import qualified Data.ByteString.Char8      as S8
+import qualified Data.ByteString.Lazy       as L
 import qualified Data.ByteString.Lazy.Char8 as L8
-import qualified Data.ByteString.Char8 as S8
-import qualified Data.ByteString.Lazy     as L
 import           Data.CaseInsensitive
 import           Data.Char
-import qualified Data.Map                 as M
+import qualified Data.Map                   as M
 import           Data.Maybe
 import           Data.Monoid
-import           Data.Text                (Text, pack, unpack)
-import qualified Data.Text as T
-import           Data.Text.Encoding (encodeUtf8)
-import qualified Data.Text.IO             as T
+import           Data.Text                  (Text, pack, unpack)
+import qualified Data.Text                  as T
+import           Data.Text.Encoding         (encodeUtf8)
+import qualified Data.Text.IO               as T
 import           Data.Time
 import           Network
-import           Network.FastIRC hiding (UserName)
-import qualified Network.FastIRC.IO       as IRC
-import           Prelude                  hiding (catch)
+import           Network.FastIRC            hiding (UserName)
+import qualified Network.FastIRC.IO         as IRC
+import           Prelude                    hiding (catch)
 import           System.Directory
 import           System.FilePath
 import           System.IO
@@ -70,7 +71,7 @@ handleClient lvar config handle env auth conn = do
   void $ forkIO $ fix $ \loop -> do
     eline <- try (S8.hGetLine handle)
     case eline of
-      Left (e::IOException) -> do killThread pinger
+      Left (_::IOException) -> do killThread pinger
                                   writeMsg "DISCONNECT"
       Right line ->
         case readMessage line of
@@ -87,9 +88,9 @@ handleClient lvar config handle env auth conn = do
 
 -- | Handle a received message from the client.
 runClientHandler :: MVar () -> Config -> MVar HulkState -> Handle -> Conn -> (String,String) -> Message -> IO ()
-runClientHandler lvar config state handle conn auth msg = do
+runClientHandler lvar config mstate handle conn auth msg = do
   now <- getCurrentTime
-  instructions <- modifyMVar state $ \state -> return $
+  instructions <- modifyMVar mstate $ \state -> return $
     let ((),newstate,instructions) = handleCommand config state now conn auth (msgCommand msg)
     in (newstate,instructions)
   forM_ instructions $ handleWriter lvar config handle
@@ -132,15 +133,15 @@ sendEvents config ref user = do
                   time >. lastSeen
   forM filtered $ \msg -> do
     case msg of
-      (time,from',rpl@RPL_PRIVMSG,[name,msg])
+      (time,from',rpl@RPL_PRIVMSG,[name,msg'])
         | name == userText user || "#" `T.isPrefixOf` name -> do
         let from = T.filter (\c -> isDigit c || isLetter c) from'
-            user = User (encodeUtf8 from)
-                        (encodeUtf8 from)
-                        "offline"
-            message = Message (Just user)
+            user' = User (encodeUtf8 from)
+                         (encodeUtf8 from)
+                         "offline"
+            message = Message (Just user')
                               (makeCommand rpl
-                                           [name,"[" <> pack (show time) <> "] " <> msg])
+                                           [name,"[" <> pack (show time) <> "] " <> msg'])
         return [MessageReply ref message
                ,outgoing message]
       _ -> return []
