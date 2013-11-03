@@ -1,19 +1,19 @@
-Name:                hulk
-Version:             0.2.0
-Synopsis:            IRC server written in Haskell.
-Description:         An IRC server with (mandatory) server authentication, log recall, bumping.
+name:                hulk
+version:             0.2.0
+synopsis:            IRC server written in Haskell.
+description:         An IRC server with (mandatory) server authentication, log recall, bumping.
                      Intended for private business use or hobby work. See examples/ directory for a demo.
 bug-reports:         https://github.com/chrisdone/hulk/issues
-License:             BSD3
-Stability:           Stable
-License-file:        LICENSE
-Author:              Chris Done
-Maintainer:          chrisdone@gmail.com
-Copyright:           2010-2013 Chris Done
-Category:            Network
-Build-type:          Simple
-Cabal-version:       >=1.2
-Extra-source-files:
+license:             BSD3
+stability:           Stable
+license-file:        LICENSE
+author:              Chris Done
+maintainer:          chrisdone@gmail.com
+copyright:           2010-2013 Chris Done
+category:            Network
+build-type:          Simple
+cabal-version:       >=1.2
+extra-source-files:
   README.md
   example/log/events.log
   example/auth/passwd
@@ -24,17 +24,17 @@ Extra-source-files:
   example/users/hulk2
   example/users/hulk
 
-Library
-  Exposed-Modules:
+library
+  exposed-modules:
      Hulk.Server
      Hulk.Options
      Hulk.Client
      Hulk.Config
      Hulk.Types
      Hulk.Auth
-  Ghc-options:       -threaded -O2 -Wall
-  Hs-Source-Dirs:    src
-  Build-depends:     base >= 4 && <5,
+  ghc-options:       -threaded -O2 -Wall
+  hs-source-dirs:    src
+  build-depends:     base >= 4 && <5,
                      text,
                      ConfigFile,
                      fastirc,
@@ -56,16 +56,16 @@ Library
                      case-insensitive,
                      monad-extras == 0.3.2.0
 
-Executable hulk
-  Main-is:           Main.hs
-  Other-Modules:     Hulk.Auth,
+executable hulk
+  main-is:           Main.hs
+  other-modules:     Hulk.Auth,
                      Hulk.Client,
                      Hulk.Config,
                      Hulk.Server,
                      Hulk.Types
-  Ghc-options:       -threaded -O2 -Wall
-  Hs-Source-Dirs:    src
-  Build-depends:     base >= 4 && <5,
+  ghc-options:       -threaded -O2 -Wall
+  hs-source-dirs:    src
+  build-depends:     base >= 4 && <5,
                      text,
                      ConfigFile,
                      fastirc,
@@ -87,11 +87,11 @@ Executable hulk
                      case-insensitive,
                      monad-extras == 0.3.2.0
 
-Executable hulk-generate-pass
-  Main-is:          GeneratePass.hs
-  Hs-Source-Dirs:   src
-  Build-depends:    base
-  Ghc-options:       -threaded -O2 -Wall
+executable hulk-generate-pass
+  main-is:          GeneratePass.hs
+  hs-source-dirs:   src
+  build-depends:    base
+  ghc-options:       -threaded -O2 -Wall
 
 source-repository head
   type: git
