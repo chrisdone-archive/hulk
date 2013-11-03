@@ -1,12 +1,15 @@
 Name:                hulk
 Version:             0.2.0
-Synopsis:            IRC daemon.
-Description:         An IRC daemon with mandatory authentication.
+Synopsis:            IRC server written in Haskell.
+Description:         An IRC server with (mandatory) server authentication, log recall, bumping.
+                     Intended for private business use or hobby work. See examples/ directory for a demo.
+bug-reports:         https://github.com/chrisdone/hulk/issues
 License:             BSD3
+Stability:           Stable
 License-file:        LICENSE
 Author:              Chris Done
 Maintainer:          chrisdone@gmail.com
-Copyright:           2010 Chris Done
+Copyright:           2010-2013 Chris Done
 Category:            Network
 Build-type:          Simple
 Cabal-version:       >=1.2
@@ -34,7 +37,7 @@ Library
   Build-depends:     base >= 4 && <5,
                      text,
                      ConfigFile,
-                     fastirc >= 0.3,
+                     fastirc,
                      network,
                      ghc-prim,
                      time,
@@ -65,7 +68,7 @@ Executable hulk
   Build-depends:     base >= 4 && <5,
                      text,
                      ConfigFile,
-                     fastirc >= 0.3,
+                     fastirc,
                      network,
                      ghc-prim,
                      time,
@@ -89,3 +92,7 @@ Executable hulk-generate-pass
   Hs-Source-Dirs:   src
   Build-depends:    base
   Ghc-options:       -threaded -O2 -Wall
+
+source-repository head
+  type: git
+  location: https://github.com/chrisdone/hulk.git
