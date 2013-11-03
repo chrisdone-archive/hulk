@@ -16,6 +16,7 @@ import           Control.Monad
 import           Control.Monad.Fix
 import           Data.Aeson
 import qualified Data.ByteString.Lazy.Char8 as L8
+import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy     as L
 import           Data.CaseInsensitive
 import           Data.Char
@@ -53,63 +54,66 @@ start config = withSocketsDo $ do
                     , connTime = now
                     }
     auth <- getAuth config
-    _ <- forkIO $ handleClient config handle statevar auth conn
-    return ()
+    void $ forkIO $ handleClient config handle statevar auth conn
 
 -- | Handle a client connection.
 handleClient :: Config -> Handle -> MVar HulkState -> (String,String) -> Conn -> IO ()
 handleClient config handle env auth conn = do
-  let run = runClientHandler config env handle conn auth
-      fake cmd ps = run (Message Nothing (StringCmd cmd ps))
+  messages <- newChan
+  let writeMsg cmd =
+        writeChan messages (Message Nothing (StringCmd cmd []))
 
   pinger <- forkIO $ forever $ do
     delayMinutes 2
-    fake "PINGPONG" []
+    writeMsg "PINGPONG"
 
-  fix $ \loop -> do
-    eline <- catch (Right <$> IRC.hGetIRCLine handle)
-                   (\(e::IOException) -> do killThread pinger
-                                            return $ Left e)
+  void $ forkIO $ fix $ \loop -> do
+    eline <- try (S8.hGetLine handle)
     case eline of
-      Left{} -> fake "DISCONNECT" []
+      Left (e::IOException) -> do killThread pinger
+                                  writeMsg "DISCONNECT"
       Right line ->
         case readMessage line of
-          Just msg -> do run msg
+          Just msg -> do writeChan messages msg
                          loop
           Nothing -> loop
 
-  where newline c = c=='\n' || c=='\r'
+  fix $ \loop -> do
+     msg <- readChan messages
+     runClientHandler config env handle conn auth msg
+     case msg of
+       Message  _  (StringCmd "DISCONNECT" _) -> return ()
+       _ -> loop
 
 -- | Handle a received message from the client.
 runClientHandler :: Config -> MVar HulkState -> Handle -> Conn -> (String,String) -> Message -> IO ()
 runClientHandler config state handle conn auth msg = do
   now <- getCurrentTime
-  modifyMVar_ state $ \state -> do
+  instructions <- modifyMVar state $ \state -> return $
     let ((),newstate,instructions) = handleCommand config state now conn auth (msgCommand msg)
-    forM_ instructions $ handleWriter config handle
-    return newstate
+    in (newstate,instructions)
+  forM_ instructions $ handleWriter config handle
 
 -- | Act on writer from the client.
 handleWriter :: Config -> Handle -> HulkWriter -> IO ()
 handleWriter config@Config{..} handle writer = do
   case writer of
+    SaveLog name rpl params -> saveToLog config name rpl params
     MessageReply ref msg -> sendMessage ref msg
     LogReply line -> logLine line
     Close -> hClose handle
-    Bump (Ref handle) -> hClose handle
+    Bump (Ref h) -> hClose h
     UpdateUserData udata -> do
       L.writeFile (configUserData </> normalizeUser (unpack (userText (userDataUser udata))))
                   (encode udata)
     SendEvents ref user -> do
       writers <- sendEvents config ref user
       mapM_ (handleWriter config handle) (concat writers)
-    SaveLog name rpl params -> saveToLog config name rpl params
 
 -- | Send a message to a client.
 sendMessage :: Ref -> Message -> IO ()
-sendMessage (Ref handle) msg = do
-  catch (IRC.hPutMessage handle msg)
-        (\(_::IOException) -> hClose handle)
+sendMessage (Ref handle) msg =
+  void $ (try $ IRC.hPutMessage handle msg :: IO (Either IOException ()))
 
 -- | Add a line to the log file.
 logLine :: Text -> IO ()

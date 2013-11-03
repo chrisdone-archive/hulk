@@ -2,7 +2,7 @@
 
 module Hulk.Providers where
 
-import           Data.Char
+
 import           Prelude                    hiding (readFile)
 
 -- instance MonadProvider HulkIO where
