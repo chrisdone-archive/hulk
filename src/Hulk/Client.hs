@@ -100,6 +100,8 @@ handleMsgReg'd cmd =
      NoticeCmd targets msg  ->
        mapM_ (flip handleNotice (decodeUtf8 msg))
              (map decodeUtf8 (S.toList targets))
+     -- TODO: Try to get these messages into the fastirc library.
+     StringCmd "AWAY" (listToMaybe -> mmsg) -> handleAway (fmap decodeUtf8 mmsg)
      StringCmd "WHOIS" [nick] -> handleWhoIs (decodeUtf8 nick)
      StringCmd "ISON" people  -> handleIsOn (map decodeUtf8 people)
      StringCmd "NAMES" [chan] -> handleNames (decodeUtf8 chan)
@@ -114,6 +116,14 @@ invalidCmd cmd = do
 
 --------------------------------------------------------------------------------
 -- * Command handlers
+
+-- | Handle the AWAY command.
+handleAway :: Maybe Text -> Hulk ()
+handleAway mmsg = do
+  ref <- getRef
+  let adjust client@Client{..} = client { clientAwayMsg = mmsg }
+  modifyClients $ M.adjust adjust ref
+
 
 -- | Handle the PONG command. This updates the user's “last seen”
 -- value on file.
@@ -417,10 +427,12 @@ modifyClients f = modify $ \env -> env { stateClients = f (stateClients env) }
 makeNewClient :: Hulk Client
 makeNewClient = do
   Conn{..} <- asks readConn
-  let client = Client { clientRef = connRef
+  let client = Client { clientRef      = connRef
                       , clientHostname = connHostname
-                      , clientUser = newUnregisteredUser
-                      , clientLastPong = connTime }
+                      , clientUser     = newUnregisteredUser
+                      , clientLastPong = connTime
+                      , clientAwayMsg  = Nothing
+                      }
   modifyClients $ M.insert connRef client
   return client
 

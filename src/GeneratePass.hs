@@ -36,5 +36,4 @@ main = do
            $ concat $ map (\x -> showHex x "")
            $ hmac_sha1 (encode key) (encode pass)
 
-  where downcase = map toLower
-        digilet c = isDigit c || isLetter c
+  where digilet c = isDigit c || isLetter c

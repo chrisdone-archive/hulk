@@ -37,6 +37,7 @@ import Control.Monad.RWS
 import Data.Aeson
 import Data.CaseInsensitive
 import Data.Map               (Map)
+import Data.Ord
 import Data.Set               (Set)
 import Data.Text              (Text)
 import Data.Time
@@ -112,6 +113,7 @@ data Client = Client
   , clientUser     :: !User
   , clientHostname :: !Text
   , clientLastPong :: !UTCTime
+  , clientAwayMsg  :: !(Maybe Text)
   } deriving (Show)
 
 -- | Some user, either unregistered or registered.
@@ -146,7 +148,7 @@ mkRef = Ref
 
 -- | Use for refs in maps.
 instance Ord Ref where
-  compare x y = if x == y then EQ else LT
+  compare = comparing show
 
 -- | Data saved about a user for later actions like log recall.
 data UserData = UserData
@@ -176,7 +178,7 @@ data HulkReader = HulkReader
   , readConn   :: !Conn
   , readConfig :: !Config
   , readMotd   :: !(Maybe Text)
-  , readAuth   :: (String,String)
+  , readAuth   :: !(String,String)
   } deriving (Show)
 
 -- | State of the whole server, which the client handles.
