@@ -31,7 +31,6 @@ import           Data.Time
 import           Network
 import           Network.FastIRC            hiding (UserName)
 import qualified Network.FastIRC.IO         as IRC
-import           Prelude                    hiding (catch)
 import           System.Directory
 import           System.FilePath
 import           System.IO
@@ -41,9 +40,9 @@ start :: Config -> IO ()
 start config = withSocketsDo $ do
   hSetBuffering stdout LineBuffering
   listenSock <- listenOn $ PortNumber (configListen config)
-  statevar <- newMVar HulkState { stateClients  = M.empty
-                                , stateNicks    = M.empty
-                                , stateChannels = M.empty }
+  statevar <- newMVar HulkState { stateClients  = mempty
+                                , stateNicks    = mempty
+                                , stateChannels = mempty }
   lvar <- newMVar ()
   forever $ do
     (handle,host,_port) <- accept listenSock

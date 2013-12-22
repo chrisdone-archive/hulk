@@ -32,7 +32,7 @@ library
      Hulk.Config
      Hulk.Types
      Hulk.Auth
-  ghc-options:       -threaded -O2 -Wall
+  ghc-options:       -O2 -Wall
   hs-source-dirs:    src
   build-depends:     base >= 4 && <5,
                      text,
