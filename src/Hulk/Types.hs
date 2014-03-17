@@ -11,6 +11,7 @@ module Hulk.Types
   ,UserName (..) -- FIXME:
   ,userText
   ,ChannelName (..) -- FIXME:
+  ,nickToUserName
   ,channelNameText
   ,Channel (..)
   ,Client (..)
@@ -85,6 +86,10 @@ instance FromJSON UserName where
 -- | Extract the text of a username for use in output.
 userText :: UserName -> Text
 userText (UserName ci) = original ci
+
+-- | Convert a nick to a username.
+nickToUserName :: Nick -> UserName
+nickToUserName = UserName . mk . nickText
 
 -- | A case-insensitive channel name.
 newtype ChannelName = ChannelName (CI Text)

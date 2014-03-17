@@ -194,11 +194,15 @@ handleNick nick' =
              then bumpAndRegister nick error_reply
              else do
                withUnregistered $ \unreg -> do
-                 (authentic,_) <- isAuthentic unreg { unregUserNick = Just nick }
+                 (authentic,_) <- isAuthentic (fake nick unreg)
                  if not authentic
                     then error_reply " (Registration not valid, can't bump off this user.)"
                     else bumpAndRegister nick error_reply
-
+          where fake nick unreg =
+                  unreg { unregUserNick = Just nick
+                        , unregUserName = unregUserName unreg <|> pure (nickText nick)
+                        , unregUserUser = unregUserUser unreg <|> pure (nickToUserName nick)
+                        }
         bumpAndRegister nick error_reply = do
           username <- getUsername
           if fmap (mk.userText) username == Just (mk (nickText nick))
