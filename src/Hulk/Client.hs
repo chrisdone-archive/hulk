@@ -194,7 +194,9 @@ handleNick nick' =
              then bumpAndRegister nick error_reply
              else do
                withUnregistered $ \unreg -> do
-                 (authentic,_) <- isAuthentic (fake nick unreg)
+                 let faker = fake nick unreg
+                 modifyUnregistered (const faker)
+                 (authentic,_) <- isAuthentic faker
                  if not authentic
                     then error_reply " (Registration not valid, can't bump off this user.)"
                     else bumpAndRegister nick error_reply
