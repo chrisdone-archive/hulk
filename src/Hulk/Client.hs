@@ -171,7 +171,8 @@ handleNick nick' =
     withValidNick nick' $ \nick ->
       ifNotMyNick nick $
         ifUniqueNick nick (updateNickAndTryRegistration nick)
-                          (Just (tryBumpingSomeoneElseOff nick))
+                          (Just (const (do bumpOff nick
+                                           updateNickAndTryRegistration nick)))
 
   where updateNickAndTryRegistration nick = do
           ref <- getRef
@@ -187,32 +188,6 @@ handleNick nick' =
             (myChannels >>=) $ mapM_ $ \Channel{..} -> do
               channelReply channelName RPL_NICK [nickText nick] ExcludeMe
             modifyRegistered $ \u -> u { regUserNick = nick }
-
-        tryBumpingSomeoneElseOff nick = \error_reply -> do
-          registered <- isRegistered <$> getUser
-          if registered
-             then bumpAndRegister nick error_reply
-             else do
-               withUnregistered $ \unreg -> do
-                 let faker = fake nick unreg
-                 modifyUnregistered (const faker)
-                 (authentic,_) <- isAuthentic faker
-                 if not authentic
-                    then error_reply " (Registration not valid, can't bump off this user.)"
-                    else bumpAndRegister nick error_reply
-          where fake nick unreg =
-                  unreg { unregUserNick = Just nick
-                        , unregUserName = unregUserName unreg <|> pure (nickText nick)
-                        , unregUserUser = unregUserUser unreg <|> pure (nickToUserName nick)
-                        }
-        bumpAndRegister nick error_reply = do
-          username <- getUsername
-          if fmap (mk.userText) username == Just (mk (nickText nick))
-             then do bumpOff nick
-                     updateNickAndTryRegistration nick
-             else error_reply $
-               let x = "username=" <> pack (show username) <> ", nick=" <> nickText nick
-               in " (Can only bump the nick that matches your username. Debug: " <> x <> ")"
 
 -- | Handle the PING message.
 handlePing :: Text -> Hulk ()
