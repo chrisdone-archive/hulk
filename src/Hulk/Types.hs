@@ -27,6 +27,7 @@ module Hulk.Types
   ,QuitType (..)
   ,ChannelReplyType (..)
   ,Hulk
+  ,HulkT
   ,runHulk
   ,HulkReader(..)
   ,HulkWriter(..)
@@ -34,6 +35,7 @@ module Hulk.Types
   where
 
 import Control.Applicative
+import Control.Monad.Identity
 import Control.Monad.RWS
 import Data.Aeson
 import Data.CaseInsensitive
@@ -168,13 +170,15 @@ instance FromJSON UserData
 -- Client handling types
 
 -- | The Hulk client monad.
-newtype Hulk a = Hulk { runHulk :: RWS HulkReader [HulkWriter] HulkState a }
+newtype HulkT m a = Hulk { runHulk :: RWST HulkReader [HulkWriter] HulkState m a }
   deriving (Monad,
             Functor,
             Applicative,
             MonadReader HulkReader,
             MonadWriter [HulkWriter],
             MonadState HulkState)
+
+type Hulk = HulkT Identity
 
 -- | Configuration/environment information for running the client
 -- handler.
