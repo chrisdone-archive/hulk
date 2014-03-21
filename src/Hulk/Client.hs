@@ -171,8 +171,7 @@ handleNick nick' =
     withValidNick nick' $ \nick ->
       ifNotMyNick nick $
         ifUniqueNick nick (updateNickAndTryRegistration nick)
-                          (Just (const (do bumpOff nick
-                                           updateNickAndTryRegistration nick)))
+                          Nothing
 
   where updateNickAndTryRegistration nick = do
           ref <- getRef
