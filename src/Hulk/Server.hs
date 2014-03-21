@@ -10,7 +10,7 @@ import           Hulk.Types
 
 import           Control.Applicative
 import           Control.Concurrent
-import           Control.Concurrent.Delay
+{-import           Control.Concurrent.Delay-}
 import           Control.Exception          (IOException, try)
 import           Control.Monad
 import           Control.Monad.Fix
@@ -20,7 +20,7 @@ import qualified Data.ByteString.Lazy       as L
 import qualified Data.ByteString.Lazy.Char8 as L8
 import           Data.CaseInsensitive
 import           Data.Char
-import qualified Data.Map                   as M
+
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Text                  (Text, pack, unpack)
@@ -64,7 +64,7 @@ handleClient lvar config handle env auth conn = do
         writeChan messages (Message Nothing (StringCmd cmd []))
 
   pinger <- forkIO $ forever $ do
-    delayMinutes 2
+    threadDelay (1000 * 1000 * 60 * 2)
     writeMsg "PINGPONG"
 
   void $ forkIO $ fix $ \loop -> do
