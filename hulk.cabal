@@ -34,7 +34,8 @@ library
      Hulk.Auth
   ghc-options:       -O2 -Wall
   hs-source-dirs:    src
-  build-depends:     base >= 4 && <5,
+  build-depends:     monad-extras >= 0.3.2.0,
+                     base >= 4 && <5,
                      text,
                      ConfigFile,
                      fastirc,
@@ -65,7 +66,8 @@ executable hulk
                      Hulk.Types
   ghc-options:       -threaded -O2 -Wall
   hs-source-dirs:    src
-  build-depends:     base >= 4 && <5,
+  build-depends:     monad-extras >= 0.3.2.0,
+                     base >= 4 && <5,
                      text,
                      ConfigFile,
                      fastirc,
