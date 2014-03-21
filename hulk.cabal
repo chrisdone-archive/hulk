@@ -71,7 +71,7 @@ executable hulk-generate-pass
                     cmdargs,
                     hulk,
                     base
-  ghc-options:       -threaded -O2 -Wall
+  ghc-options:      -threaded -O2 -Wall
 
 source-repository head
   type: git

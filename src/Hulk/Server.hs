@@ -10,7 +10,7 @@ import           Hulk.Types
 
 import           Control.Applicative
 import           Control.Concurrent
-{-import           Control.Concurrent.Delay-}
+import           Control.Exception
 import           Control.Exception          (IOException, try)
 import           Control.Monad
 import           Control.Monad.Fix
@@ -20,7 +20,6 @@ import qualified Data.ByteString.Lazy       as L
 import qualified Data.ByteString.Lazy.Char8 as L8
 import           Data.CaseInsensitive
 import           Data.Char
-
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Text                  (Text, pack, unpack)
@@ -92,7 +91,11 @@ runClientHandler lvar config mstate handle conn auth msg = do
   instructions <- modifyMVar mstate $ \state -> return $
     let ((),newstate,instructions) = handleCommand config state now conn auth (msgCommand msg)
     in (newstate,instructions)
-  forM_ instructions $ handleWriter lvar config handle
+  forM_ instructions $ \i ->
+    do result <- try (handleWriter lvar config handle i)
+       case result of
+         Left e -> putStrLn ("handleWriter exception: " ++ show (e :: SomeException) ++ " for " ++ show i)
+         Right () -> return ()
 
 -- | Act on writer from the client.
 handleWriter :: MVar () -> Config -> Handle -> HulkWriter -> IO ()
