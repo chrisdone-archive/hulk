@@ -1,4 +1,4 @@
-# Hulk IRC Server Guide
+# Hulk IRC Server Guide [![Hackage](https://img.shields.io/hackage/v/hulk.svg?style=flat)](https://hackage.haskell.org/package/hulk)
 
 ## Installation
 
