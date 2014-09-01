@@ -23,6 +23,7 @@ extra-source-files:
   example/hulk.conf
   example/users/hulk2
   example/users/hulk
+  scripts/upstart/hulk.conf
 
 library
   exposed-modules:   Hulk.Server
