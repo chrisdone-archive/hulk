@@ -1,0 +1,10 @@
+packages:
+- .
+- fastirc-0.2.0
+resolver: lts-6.27
+extra-deps:
+- Crypto-4.2.5.1
+- fastirc-0.2.0
+- bytestring-show-0.3.5.6
+- network-fancy-0.2.4
+

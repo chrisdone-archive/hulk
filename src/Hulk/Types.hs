@@ -34,7 +34,6 @@ module Hulk.Types
   ,HulkState(..))
   where
 
-import Control.Applicative
 import Control.Monad.Identity
 import Control.Monad.RWS
 import Data.Aeson

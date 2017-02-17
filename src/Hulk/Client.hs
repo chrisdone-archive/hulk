@@ -11,7 +11,6 @@ module Hulk.Client
 import           Hulk.Auth
 import           Hulk.Types
 
-import           Control.Applicative
 import           Control.Monad.RWS hiding (pass)
 import           Data.CaseInsensitive (mk)
 import           Data.Char
@@ -568,7 +567,7 @@ ifUniqueNick nick then_m else_m = do
 -- | Is a nickname valid? Digit/letter or one of these: -_/\\;()[]{}?`'
 validNick :: Text -> Bool
 validNick s = T.all ok s && T.length s > 0 where
-  ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
+  ok c = isDigit c || isLetter c || elem c ("-_/\\;()[]{}?`'"::String)
 
 -- | If the given nick is not my nick name, ….
 ifNotMyNick :: Nick -> Hulk () -> Hulk ()
@@ -585,7 +584,7 @@ ifNotMyNick nick m = do
 -- | Valid channel name?
 validChannel :: Text -> Bool
 validChannel (T.uncons -> Just ('#',cs)) = T.all ok cs && T.length cs > 0 where
-  ok c = isDigit c || isLetter c || elem c "-_/\\;()[]{}?`'"
+  ok c = isDigit c || isLetter c || elem c ("-_/\\;()[]{}?`'"::String)
 validChannel _ = False
 
 -- | Remove a user from a channel.
